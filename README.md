@@ -17,6 +17,7 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - Titkosított könyvjelzők: jelszóból scrypt-kulcs, AES-GCM, `~/.local/share/arnyek/konyvjelzok.bin` (0600); jelszó nélkül a fájlból semmi nem olvasható ki
 - Címsor-kiegészítés a könyvjelzőkből és a nyitott lapokból
 - Alvó lapok: a 10 percig háttérben álló, néma lap lefagy, kattintásra felébred
+- Letöltések gomb az eszközsoron (a munkamenet letöltései, megnyitás, mappa)
 - Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
 
 ## Indítás
@@ -34,6 +35,7 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 | Ctrl Shift N | új lap ugyanebben az identitásban |
 | Ctrl Shift T | bezárt lap visszanyitása |
 | Ctrl D | könyvjelző be/ki (csillag a címsorban) |
+| Ctrl K | parancssor: lapok, könyvjelzők, parancsok egy helyen |
 | Ctrl U | oldal forrása |
 | Ctrl Shift C | link másolása |
 | Ctrl Shift S | képernyőkép a látható részről |

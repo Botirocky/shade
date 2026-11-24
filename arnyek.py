@@ -142,7 +142,7 @@ def chromium_flagek() -> list[str]:
     return f
 
 from PySide6.QtCore import QByteArray, QSize, QStringListModel, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QShortcut
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWebEngineCore import (
     QWebEngineDownloadRequest, QWebEngineGlobalSettings, QWebEnginePage, QWebEnginePermission,
@@ -151,7 +151,7 @@ from PySide6.QtWebEngineCore import (
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QApplication, QCompleter, QMenu, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QApplication, QCompleter, QDialog, QMenu, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QStackedWidget, QToolButton, QToolTip,
     QVBoxLayout, QWidget,
 )
@@ -172,6 +172,8 @@ IKON = {
     "nyitott": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
     "halo": '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
     "csillag": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+    "letoltes": '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+    "kereso": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     "radir": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
 }
 
@@ -468,6 +470,8 @@ QListWidget {{ background: transparent; border: none; outline: none; }}
 QListWidget::item {{ height: 36px; margin: 0 0 2px 0; border-radius: 8px; border: 1px solid transparent; }}
 QListWidget::item:selected {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
 QListWidget::item:hover:!selected {{ background: {SZIN['felulet']}; }}
+#parancssor {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 12px; }}
+#parancssor QLineEdit {{ background: {SZIN['felulet']}; font-size: 14px; }}
 #kieg {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 4px; font-family: 'JetBrains Mono'; font-size: 12px; }}
 #kieg::item {{ height: 28px; padding: 0 8px; border-radius: 6px; color: {SZIN['masod']}; }}
 #kieg::item:selected {{ background: rgba(237,237,237,0.06); color: {SZIN['szoveg']}; }}
@@ -511,6 +515,69 @@ def paletta() -> QPalette:
     return p
 
 
+class Parancssor(QDialog):
+    def __init__(self, ablak, tetelek):
+        super().__init__(ablak, Qt.FramelessWindowHint | Qt.Popup)
+        self.setObjectName("parancssor")
+        self.tetelek = tetelek
+        self.setFixedWidth(560)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(8, 8, 8, 8)
+        v.setSpacing(8)
+        self.mezo = QLineEdit()
+        self.mezo.setPlaceholderText("Lap, könyvjelző vagy parancs")
+        self.mezo.setFixedHeight(40)
+        self.mezo.addAction(ikon("kereso"), QLineEdit.LeadingPosition)
+        self.mezo.textChanged.connect(self.szur)
+        self.mezo.returnPressed.connect(self.futtat)
+        self.mezo.installEventFilter(self)
+        self.lista = QListWidget()
+        self.lista.itemActivated.connect(lambda _: self.futtat())
+        self.lista.itemClicked.connect(lambda _: self.futtat())
+        v.addWidget(self.mezo)
+        v.addWidget(self.lista)
+        self.szur("")
+        g = ablak.geometry()
+        self.move(g.x() + (g.width() - 560) // 2, g.y() + 96)
+
+    def eventFilter(self, obj, e):
+        if e.type() == e.Type.KeyPress and e.key() in (Qt.Key_Down, Qt.Key_Up):
+            self.lista.setCurrentRow(max(0, min(self.lista.count() - 1, self.lista.currentRow() + (1 if e.key() == Qt.Key_Down else -1))))
+            return True
+        return super().eventFilter(obj, e)
+
+    def szur(self, szoveg):
+        self.lista.clear()
+        szavak = szoveg.lower().split()
+        self.talalt = [t for t in self.tetelek if all(sz in (t[0] + " " + t[1]).lower() for sz in szavak)]
+        for fajta, cim, _ in self.talalt:
+            it = QListWidgetItem()
+            it.setSizeHint(QSize(0, 36))
+            self.lista.addItem(it)
+            self.lista.setItemWidget(it, ParancsSor(fajta, cim))
+        self.lista.setFixedHeight(max(1, min(8, len(self.talalt))) * 38)
+        self.lista.setVisible(bool(self.talalt))
+        self.adjustSize()
+        self.lista.setCurrentRow(0)
+
+    def futtat(self):
+        i = self.lista.currentRow()
+        if 0 <= i < len(self.talalt):
+            self.accept()
+            self.talalt[i][2]()
+
+
+class ParancsSor(QWidget):
+    def __init__(self, fajta, cim):
+        super().__init__()
+        h = QHBoxLayout(self)
+        h.setContentsMargins(12, 0, 12, 0)
+        c = QLabel(objectName="lapcim")
+        c.setText(c.fontMetrics().elidedText(cim, Qt.ElideRight, 400))
+        h.addWidget(c, 1)
+        h.addWidget(QLabel(fajta, objectName="szam"))
+
+
 class Ablak(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -522,7 +589,7 @@ class Ablak(QMainWindow):
         self.bezartak: list[tuple[str, Identitas]] = []
         self.nagyitas: dict[str, float] = {}
         self.lapok: list[Lap] = []
-        self.letoltesek: dict = {}
+        self.letoltesek: list[dict] = []
 
         gyoker = QWidget()
         fo = QHBoxLayout(gyoker)
@@ -635,6 +702,13 @@ class Ablak(QMainWindow):
         QApplication.instance().focusChanged.connect(lambda _, uj: self.kieg_frissit() if uj is self.cim else None)
         eh.addWidget(self.cim, 1)
         eh.addSpacing(8)
+        self.letolt_gomb = QToolButton()
+        self.letolt_gomb.setIcon(ikon("letoltes"))
+        self.letolt_gomb.setFixedSize(32, 32)
+        self.letolt_gomb.setToolTip("Letöltések")
+        self.letolt_gomb.clicked.connect(self.letoltes_menu)
+        self.letolt_gomb.hide()
+        eh.addWidget(self.letolt_gomb)
         self.pajzs = QToolButton(objectName="pajzs")
         self.pajzs.setIcon(ikon("pajzs"))
         self.pajzs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -658,6 +732,7 @@ class Ablak(QMainWindow):
             ("Ctrl+Shift+N", lambda: self.uj_lap(self.akt().identitas)),
             ("Ctrl+Shift+T", self.visszanyit),
             ("Ctrl+D", self.kj_hozzaad),
+            ("Ctrl+K", self.parancssor),
             ("Ctrl+U", lambda: self.uj_lap(self.akt().identitas, url="view-source:" + self.akt().url().toString())),
             ("Ctrl+Shift+C", self.link_masol),
             ("Ctrl+Shift+S", self.kepernyokep),
@@ -883,6 +958,31 @@ class Ablak(QMainWindow):
         m.addAction("Többi bezárása", lambda: [self.bezar(self.lapok.index(x)) for x in list(self.lapok) if x is not lap])
         m.exec(self.lista.viewport().mapToGlobal(pont))
 
+    def parancssor(self):
+        t = [("lap", l.title() or l.url().toString() or "Új lap", lambda l=l: self.lista.setCurrentRow(self.lapok.index(l)))
+             for l in self.lapok]
+        t += [("könyvjelző", k["cim"], lambda k=k: self.akt().setUrl(QUrl(k["url"]))) for k in self.szef.lista]
+        t += [("parancs", nev, fv) for nev, fv in [
+            ("Új identitás", lambda: self.uj_lap()),
+            ("Lap ugyanebben az identitásban", lambda: self.uj_lap(self.akt().identitas)),
+            ("Bezárt lap vissza", self.visszanyit),
+            ("Könyvjelző be/ki", self.kj_hozzaad),
+            ("Könyvjelzők feloldása" if not self.szef.nyitva() else "Könyvjelzők lezárása",
+             lambda: (self.kj_felold() if not self.szef.nyitva() else self.szef.zar(), self.kj_frissit())),
+            ("Olvasó mód", self.olvaso),
+            ("Keresés az oldalon", self.keres),
+            ("Mentés PDF-be", self.pdf),
+            ("Képernyőkép", self.kepernyokep),
+            ("Oldal forrása", lambda: self.uj_lap(self.akt().identitas, url="view-source:" + self.akt().url().toString())),
+            ("Link másolása", self.link_masol),
+            ("Némítás be/ki", lambda: self.nemit(self.akt())),
+            ("Letöltések", self.letoltes_menu),
+            ("Fejlesztői eszközök", self.fejleszto),
+            ("Kiürítés", self.kiurit),
+            ("Kilépés a Torból" if TOR else "Tor mód", self.tor_valt),
+        ]]
+        Parancssor(self, t).exec()
+
     def kj_felold(self) -> bool:
         if self.szef.nyitva():
             return True
@@ -1021,12 +1121,44 @@ class Ablak(QMainWindow):
             return
         d.setDownloadDirectory(str(Path(ut).parent))
         d.setDownloadFileName(Path(ut).name)
+        t = {"nev": d.downloadFileName(), "ut": ut, "szazalek": 0, "allapot": "fut"}
+        self.letoltesek.insert(0, t)
+        self.letolt_gomb.show()
         for w in self.letoltes_sor:
             w.show()
-        self.allapot["Letöltés"].setToolTip(d.downloadFileName())
-        d.receivedBytesChanged.connect(lambda: self.allapot["Letöltés"].setText(f"{d.receivedBytes() * 100 // max(d.totalBytes(), 1)}%"))
-        d.isFinishedChanged.connect(lambda: ([w.hide() for w in self.letoltes_sor], subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve", d.downloadFileName()])))
+        self.allapot["Letöltés"].setToolTip(t["nev"])
+
+        def halad():
+            t["szazalek"] = d.receivedBytes() * 100 // max(d.totalBytes(), 1)
+            self.allapot["Letöltés"].setText(f"{t['szazalek']}%")
+
+        def vege():
+            ok = d.state() == QWebEngineDownloadRequest.DownloadState.DownloadCompleted
+            t["allapot"] = "kesz" if ok else "hiba"
+            if not any(x["allapot"] == "fut" for x in self.letoltesek):
+                for w in self.letoltes_sor:
+                    w.hide()
+            subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve" if ok else "A letöltés megszakadt", t["nev"]])
+
+        d.receivedBytesChanged.connect(halad)
+        d.isFinishedChanged.connect(vege)
         d.accept()
+
+    def letoltes_torles(self):
+        self.letoltesek = [x for x in self.letoltesek if x["allapot"] == "fut"]
+        self.letolt_gomb.setVisible(bool(self.letoltesek))
+
+    def letoltes_menu(self):
+        m = QMenu(self)
+        for t in self.letoltesek[:10]:
+            allapot = {"fut": f"{t['szazalek']}%", "kesz": "kész", "hiba": "megszakadt"}[t["allapot"]]
+            a = m.addAction(f"{t['nev'][:40]}    {allapot}", lambda t=t: QDesktopServices.openUrl(QUrl.fromLocalFile(t["ut"])))
+            a.setEnabled(t["allapot"] == "kesz")
+        m.addSeparator()
+        if self.letoltesek:
+            m.addAction("Mappa megnyitása", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.letoltesek[0]["ut"]).parent))))
+        m.addAction("Lista törlése", self.letoltes_torles)
+        m.exec(self.letolt_gomb.mapToGlobal(self.letolt_gomb.rect().bottomLeft()))
 
     def kezdolap(self, idt: Identitas) -> str:
         osszes = sum(self.munkamenet.values())
@@ -1095,7 +1227,7 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 </div>
 <div class="blokk"><div><div class="szam">{osszes}</div><div class="al">blokkolt kérés ebben a munkamenetben, {len(self.munkamenet)} követőtől</div></div>
 <ul>{sorok}</ul></div>
-<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> bezárt lap vissza</span><span><kbd>Ctrl</kbd><kbd>D</kbd> könyvjelző</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
+<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> bezárt lap vissza</span><span><kbd>Ctrl</kbd><kbd>D</kbd> könyvjelző</span><span><kbd>Ctrl</kbd><kbd>K</kbd> parancsok</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
 </main></body></html>"""
 
     def leallit(self):
