@@ -1,8 +1,10 @@
 import glob
 import html
+import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -17,7 +19,9 @@ import szuro
 
 MAPPA = Path(__file__).resolve().parent
 CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "arnyek"
+ADAT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "arnyek"
 HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+EASYLIST_URL = "https://easylist.to/easylist/easylist.txt"
 KERESO = os.environ.get("ARNYEK_KERESO", "https://duckduckgo.com/?q={}")
 DOH = os.environ.get("ARNYEK_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
@@ -47,6 +51,10 @@ def helyi_szabalyok() -> list[str]:
     return [f"MAP *.{z} {talalt[z]}, MAP {z} {talalt[z]}" for z in HELYI_ZONAK if z in talalt]
 
 
+def css_js(css: str) -> str:
+    return f"{{const s=new CSSStyleSheet();s.replaceSync({json.dumps(css)});document.adoptedStyleSheets=[...document.adoptedStyleSheets,s]}}"
+
+
 def port_nyitva(port: int) -> bool:
     with socket.socket() as s:
         s.settimeout(0.3)
@@ -71,8 +79,14 @@ def chromium_flagek() -> list[str]:
         + glob.glob("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")
         + sorted(glob.glob(str(Path.home() / ".cache/ms-playwright/chromium-*/chrome-linux64/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")))
     )
-    if wv:
-        f.append(f"--widevine-path={wv[-1]}")
+    sajat = ADAT / "WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so"
+    if wv and not sajat.exists():
+        try:
+            shutil.copytree(Path(wv[-1]).parents[2], ADAT / "WidevineCdm", dirs_exist_ok=True)
+        except OSError:
+            pass
+    if sajat.exists() or wv:
+        f.append(f"--widevine-path={sajat if sajat.exists() else wv[-1]}")
     if TOR:
         f += [
             f"--proxy-server=socks5://127.0.0.1:{TOR_PORT}",
@@ -137,24 +151,35 @@ class Blokklista(QThread):
     def __init__(self):
         super().__init__()
         self.lista = set(szuro.ALAP_TILTOTT)
+        self.css = ""
+        self.oldal: dict[str, list[str]] = {}
 
     def run(self):
-        f = CACHE / "hosts.txt"
         try:
-            if f.exists():
-                self.lista = self.lista | szuro.hosts_beolvas(f.read_text(errors="ignore"))
+            adat = self.friss("hosts.txt", HOSTS_URL, lambda a: len(szuro.hosts_beolvas(a)) > 1000)
+            if adat:
+                self.lista = set(szuro.ALAP_TILTOTT) | szuro.hosts_beolvas(adat)
                 self.betoltve.emit(len(self.lista))
-            if not TOR and (not f.exists() or time.time() - f.stat().st_mtime > 7 * 86400):
-                CACHE.mkdir(parents=True, exist_ok=True)
-                req = urllib.request.Request(HOSTS_URL, headers={"User-Agent": "arnyek"})
-                adat = urllib.request.urlopen(req, timeout=20).read().decode(errors="ignore")
-                uj = szuro.hosts_beolvas(adat)
-                if len(uj) > 1000:
-                    f.write_text(adat)
-                    self.lista = set(szuro.ALAP_TILTOTT) | uj
+            adat = self.friss("easylist.txt", EASYLIST_URL, lambda a: a.count("##") > 1000)
+            if adat:
+                altalanos, self.oldal = szuro.kozmetikus_beolvas(adat)
+                self.css = szuro.kozmetikus_css(altalanos)
         except Exception:
             pass
         self.betoltve.emit(len(self.lista))
+
+    def friss(self, nev, url, jo) -> str:
+        f = CACHE / nev
+        if not TOR and (not f.exists() or time.time() - f.stat().st_mtime > 7 * 86400):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "arnyek"})
+                adat = urllib.request.urlopen(req, timeout=20).read().decode(errors="ignore")
+                if jo(adat):
+                    CACHE.mkdir(parents=True, exist_ok=True)
+                    f.write_text(adat)
+            except OSError:
+                pass
+        return f.read_text(errors="ignore") if f.exists() else ""
 
 
 class TorIndito(QThread):
@@ -224,6 +249,22 @@ class Identitas:
         p.scripts().insert(js)
         p.downloadRequested.connect(ablak.letoltes)
         p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Árnyék", "--", n.title(), n.message()]))
+        self.kozmetika(ablak.blokk.css)
+
+    def kozmetika(self, css: str):
+        for regi in self.profil.scripts().find("arnyek-kozmetika"):
+            self.profil.scripts().remove(regi)
+        if not css:
+            return
+        js = QWebEngineScript()
+        js.setName("arnyek-kozmetika")
+        js.setSourceCode(
+            f"(()=>{{if({json.dumps(sorted(ENGEDETT))}.includes(location.hostname))return;"
+            + css_js(css) + "})()"
+        )
+        js.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        js.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        self.profil.scripts().insert(js)
 
 
 class Elfogo(QWebEngineUrlRequestInterceptor):
@@ -309,6 +350,9 @@ class Lap(QWebEngineView):
             self.identitas.kivetelek.add(u.host())
             u.setScheme("http")
             self.setUrl(u)
+        sel = szuro.oldal_szelektorok(u.host(), self.ablak.blokk.oldal) if ok and u.host() not in ENGEDETT else []
+        if sel:
+            self.page().runJavaScript(css_js(szuro.kozmetikus_css(sel)), QWebEngineScript.ScriptWorldId.ApplicationWorld)
         self.ablak.lap_frissult(self)
 
     def engedely(self, e: QWebEnginePermission):
@@ -392,6 +436,7 @@ class Ablak(QMainWindow):
         self.resize(1360, 860)
         self.munkamenet = Counter()
         self.blokk = Blokklista()
+        self.kozmetika_kesz = False
         self.lapok: list[Lap] = []
         self.letoltesek: dict = {}
 
@@ -494,7 +539,7 @@ class Ablak(QMainWindow):
         ]:
             QShortcut(QKeySequence(kulcs), self, fv)
 
-        self.blokk.betoltve.connect(lambda n: self.info_frissit())
+        self.blokk.betoltve.connect(lambda n: (self.info_frissit(), self.kozmetika()))
         self.blokk.start()
         self.tor = None
         self.tor_szazalek = 100
@@ -507,6 +552,15 @@ class Ablak(QMainWindow):
         self.uj_lap()
         for a in [x for x in ARGS if not x.startswith("--")]:
             self.uj_lap(url=szuro.cim_ertelmez(a, KERESO))
+
+    def kozmetika(self):
+        for idt in {lap.identitas for lap in self.lapok}:
+            idt.kozmetika(self.blokk.css)
+        if self.blokk.css and not self.kozmetika_kesz:
+            self.kozmetika_kesz = True
+            for lap in self.lapok:
+                if lap.url().host() not in ENGEDETT:
+                    lap.page().runJavaScript(css_js(self.blokk.css), QWebEngineScript.ScriptWorldId.ApplicationWorld)
 
     def akt(self) -> Lap:
         return self.verem.currentWidget()
@@ -640,7 +694,7 @@ class Ablak(QMainWindow):
             a = m.addAction(f"Blokkolás itt: {host}")
             a.setCheckable(True)
             a.setChecked(host not in ENGEDETT)
-            a.toggled.connect(lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), lap.reload()))
+            a.toggled.connect(lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), self.kozmetika(), lap.reload()))
         s = lap.identitas.profil.settings()
         A = QWebEngineSettings.WebAttribute
         js = m.addAction("JavaScript ebben az identitásban")

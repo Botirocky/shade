@@ -4,6 +4,8 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 
 - Minden lap külön, memóriában élő identitás: saját sütik, saját ujjlenyomat-mag, bezáráskor eltűnik
 - Követő- és reklámblokkolás (StevenBlack hosts, hetente frissül, `~/.cache/arnyek/hosts.txt`)
+- Kozmetikus reklámszűrés: EasyList `##` szabályai elrejtik a reklámhelyeket (`~/.cache/arnyek/easylist.txt`, hetente frissül)
+- DRM (Netflix stb.): a Widevine-t első induláskor `~/.local/share/arnyek/WidevineCdm`-be másolja Chrome/Chromium/Playwright mellől
 - Követő URL-paraméterek levágása (utm_*, fbclid, gclid…), http → https emelés visszaeséssel
 - Harmadik féltől jövő sütik tiltva, `Sec-GPC: 1`
 - Vászon-, hang- és WebGL-ujjlenyomat zajosítva identitásonként

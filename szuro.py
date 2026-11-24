@@ -63,6 +63,31 @@ def hosts_beolvas(szoveg: str) -> set[str]:
     return ki
 
 
+def kozmetikus_beolvas(szoveg: str) -> tuple[list[str], dict[str, list[str]]]:
+    altalanos, oldal = [], {}
+    for sor in szoveg.splitlines():
+        if sor.startswith(("!", "[")) or "##" not in sor or re.search(r"#[@?$%]#|##\+js", sor):
+            continue
+        domainek, sel = sor.split("##", 1)
+        if not sel or "{" in sel:
+            continue
+        if not domainek:
+            altalanos.append(sel)
+        elif "~" not in domainek:
+            for d in domainek.split(","):
+                oldal.setdefault(d.lower(), []).append(sel)
+    return altalanos, oldal
+
+
+def kozmetikus_css(szelektorok: list[str]) -> str:
+    return "".join(f"{s}{{display:none!important}}\n" for s in szelektorok)
+
+
+def oldal_szelektorok(host: str, oldal: dict[str, list[str]]) -> list[str]:
+    reszek = host.lower().split(".")
+    return [s for i in range(len(reszek) - 1) for s in oldal.get(".".join(reszek[i:]), [])]
+
+
 def cim_ertelmez(szoveg: str, kereso: str) -> str:
     s = szoveg.strip()
     if re.match(r"^[a-z][a-z0-9+.-]*://", s, re.I) or s.startswith(("about:", "view-source:", "data:")):
@@ -89,4 +114,10 @@ if __name__ == "__main__":
     assert cim_ertelmez("picloud.park.lan:8094", k) == "http://picloud.park.lan:8094"
     assert cim_ertelmez("mi az a tor", k) == "https://duckduckgo.com/?q=mi+az+a+tor"
     assert cim_ertelmez("localhost:3000", k) == "http://localhost:3000"
+    a, o = kozmetikus_beolvas("! x\n##.ad\nindex.hu,telex.hu##.banner\n~x.hu##.no\nfoo.com#@#.ad\nbar.com#?#div:has-text(x)\n##+js(x)\n###top-ad")
+    assert a == [".ad", "#top-ad"], a
+    assert o == {"index.hu": [".banner"], "telex.hu": [".banner"]}, o
+    assert oldal_szelektorok("www.index.hu", o) == [".banner"]
+    assert oldal_szelektorok("hu", o) == []
+    assert kozmetikus_css([".ad"]) == ".ad{display:none!important}\n"
     print("szuro: minden teszt ok")
