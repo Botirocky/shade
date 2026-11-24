@@ -1,5 +1,7 @@
 import glob
 import html
+import math
+import random
 import json
 import os
 import re
@@ -51,6 +53,44 @@ def helyi_szabalyok() -> list[str]:
     return [f"MAP *.{z} {talalt[z]}, MAP {z} {talalt[z]}" for z in HELYI_ZONAK if z in talalt]
 
 
+def ujjlenyomat_svg(mag: str, szin: str) -> str:
+    r = random.Random(int(mag, 16))
+    fazis = [r.uniform(0, math.tau) for _ in range(4)]
+    torzit = r.uniform(0.10, 0.22)
+    utak, minden = [], []
+    n = 24
+    for i in range(n):
+        sugar = 10 + i * 6.4
+        res = r.uniform(0.18, 0.42) * (i / n) if i > 13 else 0
+        torespont = r.uniform(0, math.tau)
+        pontok = []
+        for k in range(161):
+            t = math.tau * k / 160
+            szog = (t - math.pi / 2) % math.tau
+            if res and min(abs(szog), math.tau - abs(szog)) < res * math.pi:
+                pontok.append(None)
+                continue
+            if abs(((t - torespont + math.pi) % math.tau) - math.pi) < 0.05 + 0.02 * (i % 3):
+                pontok.append(None)
+                continue
+            rr = sugar * (1 + torzit * (i / n) * math.sin(t + fazis[0]) + 0.05 * math.sin(2 * t + fazis[1]) + 0.025 * math.sin(3 * t + fazis[2]))
+            pontok.append((160 + rr * math.cos(t) * 0.86, 176 - i * 1.6 + rr * math.sin(t) * 1.08))
+        minden += [p for p in pontok if p]
+        d, rajzol = [], False
+        for p in pontok:
+            if p is None:
+                rajzol = False
+                continue
+            d.append(f"{'L' if rajzol else 'M'}{p[0]:.1f} {p[1]:.1f}")
+            rajzol = True
+        atl = 0.92 - 0.6 * i / n
+        utak.append(f'<path d="{"".join(d)}" stroke-opacity="{atl:.2f}"/>')
+    x0, x1 = min(p[0] for p in minden) - 8, max(p[0] for p in minden) + 8
+    y0, y1 = min(p[1] for p in minden) - 8, max(p[1] for p in minden) + 8
+    return (f'<svg viewBox="{x0:.0f} {y0:.0f} {x1 - x0:.0f} {y1 - y0:.0f}" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="{szin}" '
+            f'stroke-width="1.6" stroke-linecap="round" aria-label="Az identitás zajosított ujjlenyomata">{"".join(utak)}</svg>')
+
+
 def css_js(css: str) -> str:
     return f"{{const s=new CSSStyleSheet();s.replaceSync({json.dumps(css)});document.adoptedStyleSheets=[...document.adoptedStyleSheets,s]}}"
 
@@ -100,7 +140,7 @@ def chromium_flagek() -> list[str]:
     return f
 
 from PySide6.QtCore import QByteArray, QSize, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QShortcut
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWebEngineCore import (
     QWebEngineDownloadRequest, QWebEngineGlobalSettings, QWebEnginePage, QWebEnginePermission,
@@ -109,14 +149,14 @@ from PySide6.QtWebEngineCore import (
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QApplication, QMenu, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QApplication, QMenu, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QStackedWidget, QToolButton,
     QVBoxLayout, QWidget,
 )
 
 SZIN = {
-    "hatter": "#111214", "felulet": "#17181b", "emelt": "#1f2024", "vonal": "rgba(236,236,240,0.08)",
-    "szoveg": "#e8e8ea", "masod": "#a3a4aa", "halk": "#6b6d74", "lampa": "#d0583f",
+    "mely": "#0f0f10", "hatter": "#141415", "felulet": "#19191b", "emelt": "#232325", "vonal": "rgba(237,237,237,0.08)",
+    "szoveg": "#ededed", "masod": "#a1a1a6", "halk": "#85858b", "lampa": "#d0583f", "kijeloles": "#a9452f",
 }
 IDENTITAS_SZINEK = ["#c9a15b", "#8fa98a", "#7f97b8", "#c07a5f", "#a68bb0", "#6fa6a0"]
 
@@ -364,11 +404,18 @@ class Lap(QWebEngineView):
         self.setHtml(self.ablak.kezdolap(self.identitas), QUrl("about:blank"))
 
 
+def cimke(szoveg: str) -> QLabel:
+    c = QLabel(szoveg, objectName="cimke")
+    c.setContentsMargins(8, 0, 8, 0)
+    c.setIndent(0)
+    return c
+
+
 class LapSor(QWidget):
     def __init__(self, szin):
         super().__init__()
         h = QHBoxLayout(self)
-        h.setContentsMargins(12, 0, 12, 0)
+        h.setContentsMargins(8, 0, 8, 0)
         h.setSpacing(10)
         pont = QLabel()
         pont.setFixedSize(8, 8)
@@ -383,7 +430,7 @@ class LapSor(QWidget):
 
     def beallit(self, cim, szam, hang=""):
         fm = self.cim.fontMetrics()
-        self.cim.setText(fm.elidedText(cim or "Új lap", Qt.ElideRight, 150 if not hang else 110))
+        self.cim.setText(fm.elidedText(cim or "Új lap", Qt.ElideRight, 160 if not hang else 120))
         self.szam.setText(" ".join(x for x in (hang, str(szam) if szam else "") if x))
 
 
@@ -402,31 +449,55 @@ class LapLista(QListWidget):
 STILUS = f"""
 * {{ font-family: Inter; font-size: 13px; color: {SZIN['szoveg']}; }}
 QMainWindow, #jobb {{ background: {SZIN['hatter']}; }}
-#oldalsav {{ background: {SZIN['felulet']}; border-right: 1px solid {SZIN['vonal']}; }}
+#oldalsav {{ background: {SZIN['mely']}; border-right: 1px solid {SZIN['vonal']}; }}
 #marka {{ font-size: 15px; font-weight: 500; }}
-#mod, #szam, #info {{ font-family: 'JetBrains Mono'; font-size: 11px; color: {SZIN['halk']}; }}
+#mod {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['halk']}; }}
+#cimke {{ font-size: 12px; color: {SZIN['halk']}; }}
+#allapotnev {{ color: {SZIN['masod']}; }}
+#allapotertek, #szam {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['halk']}; }}
 #lapcim {{ color: {SZIN['masod']}; }}
 QListWidget {{ background: transparent; border: none; outline: none; }}
-QListWidget::item {{ height: 34px; margin: 1px 0; border-radius: 8px; }}
+QListWidget::item {{ height: 36px; margin: 0 0 2px 0; border-radius: 8px; border: 1px solid transparent; }}
 QListWidget::item:selected {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
-QListWidget::item:hover:!selected {{ background: rgba(236,236,240,0.03); }}
+QListWidget::item:hover:!selected {{ background: {SZIN['felulet']}; }}
 #eszkozsor {{ background: {SZIN['hatter']}; border-bottom: 1px solid {SZIN['vonal']}; }}
-QLineEdit {{ background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 6px 8px; selection-background-color: {SZIN['lampa']}; }}
-QLineEdit:focus {{ border: 1px solid rgba(236,236,240,0.22); }}
-QToolButton {{ background: transparent; border: none; border-radius: 8px; padding: 6px; }}
+QLineEdit {{ background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 0 8px; selection-background-color: {SZIN['kijeloles']}; }}
+QLineEdit:focus {{ background: {SZIN['emelt']}; border: 1px solid rgba(237,237,237,0.20); }}
+QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; }}
 QToolButton:hover {{ background: {SZIN['emelt']}; }}
-QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; text-align: left; color: {SZIN['masod']}; }}
-QPushButton:hover {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
-#pajzs {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; padding: 4px 8px; }}
-QMenu {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 10px; padding: 4px; }}
-QMenu::item {{ padding: 6px 12px; border-radius: 6px; }}
-QMenu::item:selected {{ background: rgba(236,236,240,0.06); }}
-QMenu::item:disabled {{ color: {SZIN['halk']}; font-family: 'JetBrains Mono'; font-size: 11px; }}
+QToolButton:pressed {{ background: {SZIN['felulet']}; }}
+QToolButton:focus {{ border: 1px solid rgba(237,237,237,0.20); }}
+QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; min-height: 32px; max-height: 32px; padding: 0 8px; text-align: left; color: {SZIN['masod']}; }}
+QPushButton:hover {{ background: {SZIN['felulet']}; color: {SZIN['szoveg']}; }}
+QPushButton:pressed {{ background: {SZIN['emelt']}; }}
+QPushButton:focus {{ border: 1px solid rgba(237,237,237,0.20); }}
+#pajzs {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; padding: 0 8px; }}
+QMenu {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 12px; padding: 4px; }}
+QMenu::item {{ padding: 8px 12px; border-radius: 8px; }}
+QMenu::item:selected {{ background: rgba(237,237,237,0.06); }}
+QMenu::item:disabled {{ color: {SZIN['halk']}; font-family: 'JetBrains Mono'; font-size: 12px; }}
 QMenu::separator {{ height: 1px; background: {SZIN['vonal']}; margin: 4px 8px; }}
 QProgressBar {{ background: transparent; border: none; max-height: 2px; }}
 QProgressBar::chunk {{ background: {SZIN['lampa']}; }}
 QMessageBox, QInputDialog, QFileDialog {{ background: {SZIN['felulet']}; }}
+QToolTip {{ background: {SZIN['emelt']}; color: {SZIN['szoveg']}; border: 1px solid {SZIN['vonal']}; border-radius: 6px; padding: 4px 8px; }}
+QScrollBar:vertical {{ background: transparent; width: 8px; }}
+QScrollBar::handle:vertical {{ background: {SZIN['emelt']}; border-radius: 4px; min-height: 24px; }}
+QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ background: none; height: 0; }}
 """
+
+
+def paletta() -> QPalette:
+    p = QPalette()
+    for szerep, kulcs in [
+        (QPalette.Window, "hatter"), (QPalette.Base, "felulet"), (QPalette.AlternateBase, "emelt"),
+        (QPalette.Button, "emelt"), (QPalette.ToolTipBase, "emelt"),
+        (QPalette.WindowText, "szoveg"), (QPalette.Text, "szoveg"), (QPalette.ButtonText, "szoveg"),
+        (QPalette.ToolTipText, "szoveg"), (QPalette.PlaceholderText, "halk"), (QPalette.Highlight, "kijeloles"),
+    ]:
+        p.setColor(szerep, QColor(SZIN[kulcs]))
+    p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    return p
 
 
 class Ablak(QMainWindow):
@@ -446,36 +517,57 @@ class Ablak(QMainWindow):
         fo.setSpacing(0)
 
         self.oldalsav = QFrame(objectName="oldalsav")
-        self.oldalsav.setFixedWidth(248)
+        self.oldalsav.setFixedWidth(256)
         ov = QVBoxLayout(self.oldalsav)
-        ov.setContentsMargins(12, 16, 12, 12)
+        ov.setContentsMargins(12, 0, 12, 12)
         ov.setSpacing(0)
-        fej = QHBoxLayout()
-        fej.setContentsMargins(4, 0, 4, 0)
-        fej.addWidget(QLabel("Árnyék", objectName="marka"))
-        fej.addStretch()
+        fej = QFrame(objectName="fej")
+        fej.setFixedHeight(48)
+        fh = QHBoxLayout(fej)
+        fh.setContentsMargins(8, 0, 8, 0)
+        fh.addWidget(QLabel("Árnyék", objectName="marka"))
+        fh.addStretch()
         self.mod = QLabel(objectName="mod")
-        fej.addWidget(self.mod)
-        ov.addLayout(fej)
-        ov.addSpacing(16)
+        fh.addWidget(self.mod)
+        ov.addWidget(fej)
+        ov.addSpacing(12)
+        ov.addWidget(cimke("Lapok"))
+        ov.addSpacing(4)
         self.lista = LapLista()
         self.lista.currentRowChanged.connect(self.valt)
         self.lista.kozepso.connect(self.bezar)
         self.lista.setContextMenuPolicy(Qt.CustomContextMenu)
         self.lista.customContextMenuRequested.connect(self.lap_menu)
         ov.addWidget(self.lista, 1)
-        self.info = QLabel(objectName="info")
-        self.info.setWordWrap(True)
-        self.info.setContentsMargins(4, 8, 4, 8)
-        ov.addWidget(self.info)
+        ov.addSpacing(16)
+        ov.addWidget(cimke("Állapot"))
+        ov.addSpacing(4)
+        racs = QGridLayout()
+        racs.setContentsMargins(8, 0, 8, 0)
+        racs.setHorizontalSpacing(12)
+        racs.setVerticalSpacing(4)
+        self.allapot: dict[str, QLabel] = {}
+        for i, nev in enumerate(["Tiltólista", "DNS", "Identitás", "Letöltés"]):
+            c = QLabel(nev, objectName="allapotnev")
+            e = QLabel(objectName="allapotertek")
+            e.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            racs.addWidget(c, i, 0)
+            racs.addWidget(e, i, 1)
+            self.allapot[nev] = e
+            if nev == "Letöltés":
+                self.letoltes_sor = (c, e)
+                c.hide()
+                e.hide()
+        ov.addLayout(racs)
+        ov.addSpacing(16)
         for szoveg, nev, fv in [
             ("Új identitás", "plusz", lambda: self.uj_lap()),
             ("Kiürítés", "radir", self.kiurit),
         ]:
-            b = QPushButton(ikon(nev), "  " + szoveg)
+            b = QPushButton(ikon(nev), szoveg)
             b.clicked.connect(fv)
             ov.addWidget(b)
-        self.modvalto = QPushButton(ikon("halo"), "  " + ("Kilépés a Torból" if TOR else "Tor mód"))
+        self.modvalto = QPushButton(ikon("halo"), "Kilépés a Torból" if TOR else "Tor mód")
         self.modvalto.clicked.connect(self.tor_valt)
         ov.addWidget(self.modvalto)
 
@@ -485,17 +577,20 @@ class Ablak(QMainWindow):
         jv.setSpacing(0)
         self.eszkozsor = QFrame(objectName="eszkozsor")
         eh = QHBoxLayout(self.eszkozsor)
-        eh.setContentsMargins(12, 8, 12, 8)
+        self.eszkozsor.setFixedHeight(48)
+        eh.setContentsMargins(12, 0, 12, 0)
         eh.setSpacing(4)
         for nev, fv in [("vissza", lambda: self.akt().back()), ("elore", lambda: self.akt().forward()), ("frissit", lambda: self.akt().reload())]:
             tb = QToolButton()
-            tb.setIcon(ikon(nev, meret=18))
-            tb.setIconSize(QSize(18, 18))
+            tb.setIcon(ikon(nev, meret=16))
+            tb.setIconSize(QSize(16, 16))
+            tb.setFixedSize(32, 32)
             tb.clicked.connect(fv)
             eh.addWidget(tb)
         eh.addSpacing(8)
         self.cim = QLineEdit()
         self.cim.setPlaceholderText("Keresés vagy cím")
+        self.cim.setFixedHeight(32)
         self.cim.returnPressed.connect(self.megnyit)
         self.lakat = QAction(ikon("lakat"), "", self.cim)
         self.cim.addAction(self.lakat, QLineEdit.LeadingPosition)
@@ -504,6 +599,7 @@ class Ablak(QMainWindow):
         self.pajzs = QToolButton(objectName="pajzs")
         self.pajzs.setIcon(ikon("pajzs"))
         self.pajzs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.pajzs.setFixedHeight(32)
         self.pajzs.clicked.connect(self.pajzs_menu)
         eh.addWidget(self.pajzs)
         jv.addWidget(self.eszkozsor)
@@ -643,12 +739,13 @@ class Ablak(QMainWindow):
     def info_frissit(self):
         if TOR:
             self.mod.setText("tor" if self.tor_szazalek >= 100 else f"tor {self.tor_szazalek}%")
-            dns = "DNS a Tor-láncon"
+            dns = "Tor-láncon"
         else:
             self.mod.setText("közvetlen")
-            dns = "DNS: rendszer" if RENDSZER_DNS else "DNS: titkosított"
-        szam = f"{len(self.blokk.lista):,}".replace(",", " ")
-        self.info.setText(f"{szam} tiltott tartomány\n{dns}\n{len(self.lapok)} lap, {len({id(l.identitas) for l in self.lapok})} identitás")
+            dns = "rendszer" if RENDSZER_DNS else "titkosított"
+        self.allapot["Tiltólista"].setText(f"{len(self.blokk.lista):,}".replace(",", " "))
+        self.allapot["DNS"].setText(dns)
+        self.allapot["Identitás"].setText(f"{len({id(l.identitas) for l in self.lapok})} ({len(self.lapok)} lap)")
 
     def tor_allapot(self, sz):
         if sz < 0:
@@ -764,67 +861,80 @@ class Ablak(QMainWindow):
             return
         d.setDownloadDirectory(str(Path(ut).parent))
         d.setDownloadFileName(Path(ut).name)
-        d.receivedBytesChanged.connect(lambda: self.info.setText(
-            f"Letöltés: {d.downloadFileName()[:22]}\n{d.receivedBytes() * 100 // max(d.totalBytes(), 1)}%"))
-        d.isFinishedChanged.connect(lambda: (self.info_frissit(), subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve", d.downloadFileName()])))
+        for w in self.letoltes_sor:
+            w.show()
+        self.allapot["Letöltés"].setToolTip(d.downloadFileName())
+        d.receivedBytesChanged.connect(lambda: self.allapot["Letöltés"].setText(f"{d.receivedBytes() * 100 // max(d.totalBytes(), 1)}%"))
+        d.isFinishedChanged.connect(lambda: ([w.hide() for w in self.letoltes_sor], subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve", d.downloadFileName()])))
         d.accept()
 
     def kezdolap(self, idt: Identitas) -> str:
         osszes = sum(self.munkamenet.values())
-        top = self.munkamenet.most_common(6)
+        top = self.munkamenet.most_common(5)
         maxi = top[0][1] if top else 1
         sorok = "".join(
             f'<li><span class="d">{html.escape(d)}</span><span class="n">{n}</span>'
-            f'<i style="width:{max(2, n * 100 // maxi)}%;background:{SZIN["lampa"] if j == 0 else "#3a3b40"}"></i></li>'
+            f'<i><b style="width:{max(2, n * 100 // maxi)}%;{"background:" + SZIN["lampa"] if j == 0 else ""}"></b></i></li>'
             for j, (d, n) in enumerate(top)
         ) or '<li class="ures">Ebben a munkamenetben még semmi nem próbált követni</li>'
         if TOR:
-            halo = "Tor-hálózat, három ugrás, a cél nem látja a címed"
+            halo = "Tor-hálózat, három ugrás"
         elif RENDSZER_DNS:
-            halo = "Közvetlen, a DNS a rendszer szerverén megy"
+            halo = "Közvetlen, a rendszer DNS-ével"
         else:
-            halo = "Közvetlen, a DNS titkosítva megy: " + html.escape(urlsplit(DOH).hostname or DOH)
+            halo = "Közvetlen, titkosított DNS: " + html.escape(urlsplit(DOH).hostname or DOH)
+        kereso = html.escape(KERESO.split("?")[0])
         return f"""<!doctype html><html lang="hu"><head><meta charset="utf-8"><title>Új lap</title><style>
-:root{{color-scheme:dark}}
+:root{{color-scheme:dark;--e:cubic-bezier(.22,1,.36,1)}}
 *{{box-sizing:border-box;margin:0}}
-body{{background:{SZIN['hatter']};color:{SZIN['szoveg']};font:14px/1.5 Inter,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px}}
-main{{width:min(880px,100%);margin-top:-6vh}}
-form{{display:flex;margin-bottom:48px}}
-input{{flex:1;background:{SZIN['felulet']};border:1px solid {SZIN['vonal']};border-radius:12px;color:inherit;font:inherit;font-size:17px;padding:14px 18px;outline:none;transition:border-color .15s}}
-input:focus{{border-color:rgba(236,236,240,.22)}}
-.racs{{display:grid;grid-template-columns:5fr 6fr;gap:24px}}
-section{{background:{SZIN['felulet']};border:1px solid {SZIN['vonal']};border-radius:16px;padding:24px}}
-h2{{font-size:13px;font-weight:500;color:{SZIN['masod']};margin-bottom:16px;display:flex;align-items:center;gap:8px}}
-.pont{{width:8px;height:8px;border-radius:4px;background:{idt.szin}}}
-dl{{display:grid;grid-template-columns:auto 1fr;gap:10px 16px}}
+body{{background:{SZIN['hatter']};color:{SZIN['szoveg']};font:14px/20px Inter,sans-serif;min-height:100vh;display:grid;place-items:center;padding:48px 32px}}
+main{{width:min(960px,100%);animation:be .4s var(--e) both}}
+@keyframes be{{from{{opacity:0;transform:translateY(8px)}}}}
+@media(prefers-reduced-motion:reduce){{main{{animation:none}}}}
+form{{position:relative;margin-bottom:48px}}
+form svg{{position:absolute;left:16px;top:16px;width:16px;height:16px;stroke:{SZIN['halk']}}}
+input{{width:100%;height:48px;background:{SZIN['felulet']};border:1px solid {SZIN['vonal']};border-radius:12px;color:inherit;font:inherit;font-size:15px;padding:0 16px 0 44px;outline:none;transition:border-color .15s var(--e),background-color .15s var(--e)}}
+input::placeholder{{color:{SZIN['halk']}}}
+input:focus{{background:{SZIN['emelt']};border-color:rgba(237,237,237,.2)}}
+.fo{{display:grid;grid-template-columns:320px 1fr;gap:48px;align-items:center}}
+.nyomat{{background:{SZIN['mely']};border:1px solid {SZIN['vonal']};border-radius:16px;padding:32px;aspect-ratio:1;display:grid;place-items:center}}
+.nyomat svg{{width:100%;height:100%}}
+.cimsor{{display:flex;align-items:center;gap:12px;margin-bottom:8px}}
+.pont{{width:10px;height:10px;border-radius:5px;background:{idt.szin}}}
+h1{{font-size:32px;line-height:40px;font-weight:500}}
+.mag{{font-family:'JetBrains Mono',monospace;font-size:12px;color:{SZIN['halk']};margin-bottom:24px}}
+dl{{display:grid;grid-template-columns:112px 1fr;row-gap:12px;border-top:1px solid {SZIN['vonal']};padding-top:24px}}
 dt{{color:{SZIN['halk']}}}
-dd{{color:{SZIN['szoveg']}}}
-.mono{{font-family:'JetBrains Mono',monospace;font-size:12px}}
-.nagy{{font-family:'JetBrains Mono',monospace;font-size:44px;line-height:1;font-variant-numeric:tabular-nums;margin-bottom:4px}}
-.al{{color:{SZIN['halk']};margin-bottom:20px}}
-ul{{list-style:none;padding:0;display:grid;gap:10px}}
+dd{{color:{SZIN['masod']}}}
+.blokk{{margin-top:48px;border-top:1px solid {SZIN['vonal']};padding-top:24px;display:grid;grid-template-columns:320px 1fr;gap:48px}}
+.szam{{font-family:'JetBrains Mono',monospace;font-size:32px;line-height:1;font-variant-numeric:tabular-nums;margin-bottom:8px}}
+.al{{color:{SZIN['halk']}}}
+ul{{list-style:none;padding:0;display:grid;gap:12px}}
 li{{display:grid;grid-template-columns:1fr auto;row-gap:4px}}
 li .d{{color:{SZIN['masod']};overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 li .n{{font-family:'JetBrains Mono',monospace;font-size:12px;color:{SZIN['halk']};font-variant-numeric:tabular-nums}}
-li i{{grid-column:1/3;height:3px;border-radius:2px;display:block}}
+li i{{grid-column:1/3;height:4px;border-radius:2px;background:{SZIN['felulet']};display:block}}
+li b{{display:block;height:100%;border-radius:2px;background:#3a3a3d}}
 li.ures{{display:block;color:{SZIN['halk']}}}
-footer{{margin-top:32px;color:{SZIN['halk']};font-size:12px;display:flex;gap:24px;flex-wrap:wrap}}
-kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba(236,236,240,.14);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:{SZIN['masod']};margin-right:2px}}
-@media(max-width:720px){{.racs{{grid-template-columns:1fr}}}}
+footer{{margin-top:48px;color:{SZIN['halk']};font-size:12px;display:flex;gap:8px 24px;flex-wrap:wrap}}
+kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba(237,237,237,.14);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:{SZIN['masod']};margin-right:2px}}
+@media(max-width:760px){{.fo,.blokk{{grid-template-columns:1fr;gap:24px}}.nyomat{{max-width:240px}}}}
 </style></head><body><main>
-<form action="{html.escape(KERESO.split('?')[0])}" method="get"><input name="q" placeholder="Keresés" autofocus autocomplete="off"></form>
-<div class="racs">
-<section><h2><span class="pont"></span>Identitás {idt.nev}</h2><dl>
-<dt>Sütik</dt><dd>Csak ez az identitás látja, bezáráskor törlődnek</dd>
-<dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, <span class="mono">mag {idt.mag}</span></dd>
+<form action="{kereso}" method="get"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input name="q" placeholder="Keresés" autofocus autocomplete="off"></form>
+<div class="fo">
+<div class="nyomat">{ujjlenyomat_svg(idt.mag, idt.szin)}</div>
+<div><div class="cimsor"><span class="pont"></span><h1>Identitás {idt.nev}</h1></div>
+<div class="mag">mag {idt.mag} · bezáráskor nyomtalanul eltűnik</div>
+<dl>
+<dt>Sütik</dt><dd>Csak ez az identitás látja őket</dd>
+<dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, a minta balra</dd>
 <dt>Hálózat</dt><dd>{halo}</dd>
-<dt>WebRTC</dt><dd>{"Kikapcsolva, csak a Toron át mehetne" if TOR else "A helyi címed rejtve marad, hívás működik"}</dd>
-<dt>Lemez</dt><dd>Semmi nem kerül ki: se előzmény, se gyorsítótár</dd>
-</dl></section>
-<section><h2>Blokkolva ebben a munkamenetben</h2>
-<div class="nagy">{osszes}</div><div class="al">kérés, {len(self.munkamenet)} követő tartományból</div>
-<ul>{sorok}</ul></section>
+<dt>WebRTC</dt><dd>{"Kikapcsolva, csak Toron át mehetne" if TOR else "Helyi cím rejtve, a hívás működik"}</dd>
+<dt>Lemez</dt><dd>Nincs előzmény, nincs gyorsítótár</dd>
+</dl></div>
 </div>
+<div class="blokk"><div><div class="szam">{osszes}</div><div class="al">blokkolt kérés ebben a munkamenetben, {len(self.munkamenet)} követőtől</div></div>
+<ul>{sorok}</ul></div>
 <footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
 </main></body></html>"""
 
@@ -848,6 +958,8 @@ def main():
     app = QApplication([sys.argv[0], "--webEngineArgs"] + chromium_flagek())
     app.setApplicationName("Árnyék")
     app.setDesktopFileName("arnyek")
+    app.setStyle("Fusion")
+    app.setPalette(paletta())
     app.setStyleSheet(STILUS)
     ablak = Ablak()
     ablak.show()

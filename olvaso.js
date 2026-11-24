@@ -36,17 +36,17 @@
   const eredetiCim = document.title;
   document.head.innerHTML = `<meta charset="utf-8"><style>
     :root { color-scheme: dark }
-    body { background: #111214; color: #d9d9dc; font: 19px/1.7 Charter, "Iowan Old Style", Georgia, serif; margin: 0; padding: 64px 24px 128px }
+    body { background: #141415; color: #d4d4d8; font: 19px/1.7 Charter, "Iowan Old Style", Georgia, serif; margin: 0; padding: 64px 24px 128px }
     main { max-width: 680px; margin: 0 auto }
-    .meta { font: 12px "JetBrains Mono", monospace; color: #6b6d74; margin-bottom: 16px }
-    h1 { font: 500 36px/1.2 Inter, sans-serif; color: #e8e8ea; margin: 0 0 40px }
-    h2, h3, h4 { font: 500 22px/1.3 Inter, sans-serif; color: #e8e8ea; margin: 40px 0 12px }
+    .meta { font: 12px "JetBrains Mono", monospace; color: #85858b; margin-bottom: 16px }
+    h1 { font: 500 36px/1.2 Inter, sans-serif; color: #ededed; margin: 0 0 40px }
+    h2, h3, h4 { font: 500 22px/1.3 Inter, sans-serif; color: #ededed; margin: 40px 0 12px }
     p { margin: 0 0 20px }
-    a { color: #e8e8ea; text-decoration-color: #d0583f; text-underline-offset: 3px }
+    a { color: #ededed; text-decoration-color: #d0583f; text-underline-offset: 3px }
     img { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0 }
-    figure { margin: 24px 0 } figcaption { font: 13px Inter, sans-serif; color: #6b6d74 }
-    blockquote { border-left: 2px solid #d0583f; margin: 24px 0; padding-left: 20px; color: #a3a4aa }
-    pre { font: 14px "JetBrains Mono", monospace; background: #17181b; padding: 16px; border-radius: 8px; overflow: auto }
+    figure { margin: 24px 0 } figcaption { font: 13px Inter, sans-serif; color: #85858b }
+    blockquote { border-left: 2px solid #d0583f; margin: 24px 0; padding-left: 20px; color: #a1a1a6 }
+    pre { font: 14px "JetBrains Mono", monospace; background: #19191b; padding: 16px; border-radius: 8px; overflow: auto }
   </style>`;
   document.title = eredetiCim;
   document.body.removeAttribute("class");
