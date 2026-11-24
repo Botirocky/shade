@@ -1472,6 +1472,7 @@ def main():
     app = QApplication([sys.argv[0], "--webEngineArgs"] + chromium_flagek())
     app.setApplicationName("Árnyék")
     app.setDesktopFileName("arnyek")
+    app.setWindowIcon(QIcon(str(MAPPA / "arnyek.svg")))
     app.setStyle("Fusion")
     app.setPalette(paletta())
     app.setStyleSheet(STILUS)

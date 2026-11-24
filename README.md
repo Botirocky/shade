@@ -24,6 +24,14 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - Letöltések gomb az eszközsoron (a munkamenet letöltései, megnyitás, mappa)
 - Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
 
+## Telepítés
+
+```sh
+git clone https://github.com/Botirocky/arnyek && cd arnyek && ./telepit.sh
+```
+
+Feltelepíti a hiányzó csomagokat (Archon pacmannal: pyside6, qt6-webengine, python-cryptography, tor, alsa-utils), létrehozza az `arnyek` parancsot, az ikont és a menübejegyzést (Tor mód és rendszer-DNS indítással). Eltávolítás: `./telepit.sh --eltavolit`. Alapértelmezett böngésző: `xdg-settings set default-web-browser arnyek.desktop`.
+
 ## Indítás
 
     python arnyek.py [cím…] [--tor] [--rendszer-dns]
