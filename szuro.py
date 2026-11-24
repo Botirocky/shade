@@ -106,8 +106,27 @@ def oldal_szelektorok(host: str, oldal: dict[str, list[str]], kivetel: dict[str,
     return [s for s in jeloltek if not _illik(host, (kivetel or {}).get(s, ()))]
 
 
+KULCSSZAVAK = {
+    "w": "https://hu.wikipedia.org/w/index.php?search={}",
+    "wen": "https://en.wikipedia.org/w/index.php?search={}",
+    "yt": "https://www.youtube.com/results?search_query={}",
+    "gh": "https://github.com/search?q={}",
+    "osm": "https://www.openstreetmap.org/search?query={}",
+    "arch": "https://wiki.archlinux.org/index.php?search={}",
+    "aur": "https://aur.archlinux.org/packages?K={}",
+    "mdn": "https://developer.mozilla.org/search?q={}",
+    "pypi": "https://pypi.org/search/?q={}",
+    "sp": "https://www.startpage.com/do/search?query={}",
+    "ddg": "https://duckduckgo.com/?q={}",
+}
+
+
 def cim_ertelmez(szoveg: str, kereso: str) -> str:
     s = szoveg.strip()
+    kulcs, _, maradek = s.partition(" ")
+    if kulcs.lower() in KULCSSZAVAK and maradek.strip():
+        from urllib.parse import quote_plus
+        return KULCSSZAVAK[kulcs.lower()].format(quote_plus(maradek.strip()))
     if re.match(r"^[a-z][a-z0-9+.-]*://", s, re.I) or s.startswith(("about:", "view-source:", "data:")):
         return s
     if " " not in s and (re.match(r"^[\w.-]+\.[a-z]{2,}(:\d+)?(/.*)?$", s, re.I) or re.match(r"^(localhost|[\d.]+)(:\d+)?(/.*)?$", s)):
@@ -132,6 +151,9 @@ if __name__ == "__main__":
     assert cim_ertelmez("picloud.park.lan:8094", k) == "http://picloud.park.lan:8094"
     assert cim_ertelmez("mi az a tor", k) == "https://duckduckgo.com/?q=mi+az+a+tor"
     assert cim_ertelmez("localhost:3000", k) == "http://localhost:3000"
+    assert cim_ertelmez("w Budapest ostroma", k) == "https://hu.wikipedia.org/w/index.php?search=Budapest+ostroma"
+    assert cim_ertelmez("yt", k) == "https://duckduckgo.com/?q=yt"
+    assert cim_ertelmez("wikipedia.org", k) == "https://wikipedia.org"
     a, o, k = kozmetikus_beolvas("! x\n##.ad\nindex.hu,telex.hu##.banner\n~x.hu##.no\nfoo.com#@#.ad\nbar.com#?#div:has-text(x)\n##+js(x)\n###top-ad")
     assert a == ["#top-ad"], a
     assert o == {"index.hu": [".banner"], "telex.hu": [".banner"], "*": [".ad"]}, o

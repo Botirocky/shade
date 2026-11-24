@@ -17,6 +17,10 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - Titkosított könyvjelzők: jelszóból scrypt-kulcs, AES-GCM, `~/.local/share/arnyek/konyvjelzok.bin` (0600); jelszó nélkül a fájlból semmi nem olvasható ki
 - Címsor-kiegészítés a könyvjelzőkből és a nyitott lapokból
 - Alvó lapok: a 10 percig háttérben álló, néma lap lefagy, kattintásra felébred
+- Kulcsszavas keresés a címsorban: `w` (magyar Wikipédia), `wen`, `yt`, `gh`, `osm`, `arch`, `aur`, `mdn`, `pypi`, `sp` (Startpage), `ddg`, pl. `w Budapest ostroma`
+- Biztonsági szint a pajzs-menüben (Tor Browser mintára): Normál, Szigorúbb (WebGL ki, titkosítatlan http-n JavaScript ki), Legszigorúbb (JavaScript és WebGL mindenhol ki)
+- Sötét mód kényszerítése minden oldalra (pajzs-menü vagy Ctrl K)
+- Felolvasás: a Piper és a hang helye `ARNYEK_PIPER` és `ARNYEK_HANG` változóval állítható; semmi nem megy ki a gépről
 - Letöltések gomb az eszközsoron (a munkamenet letöltései, megnyitás, mappa)
 - Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
 
@@ -46,6 +50,9 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 | Ctrl Shift O | Tor mód be/ki (újraindul) |
 | Ctrl Shift R | olvasó mód |
 | Ctrl M | némítás |
-| Ctrl L, Ctrl F, Ctrl P, F12 | cím, keresés, PDF, fejlesztői eszközök |
+| Ctrl F | keresősáv az oldalon (Enter / Shift+Enter: következő / előző, Esc: bezár) |
+| Ctrl Shift U | felolvasás helyi Piper-hanggal (kijelölés, vagy a cikk szövege), újra: leállít |
+| Ctrl Shift L | Tor módban: új Tor-útvonal és az oldal újranyitása új identitásban |
+| Ctrl L, Ctrl P, F12 | cím, PDF, fejlesztői eszközök |
 
 Teszt: `python szuro.py`

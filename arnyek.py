@@ -31,6 +31,9 @@ DOH = os.environ.get("ARNYEK_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
 TOR = "--tor" in ARGS
 RENDSZER_DNS = "--rendszer-dns" in ARGS
+PIPER = os.environ.get("ARNYEK_PIPER", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/.venv/bin/piper"))
+PIPER_HANG = os.environ.get("ARNYEK_HANG", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/hangok/hu_HU-anna-medium.onnx"))
+SZINTEK = ["Normál", "Szigorúbb", "Legszigorúbb"]
 HELYI_ZONAK = os.environ.get("ARNYEK_HELYI", "nagy.park.lan park.lan").split()
 ENGEDETT: set[str] = set()
 if TOR:
@@ -174,6 +177,9 @@ IKON = {
     "csillag": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
     "letoltes": '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
     "kereso": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "fel": '<path d="m18 15-6-6-6 6"/>',
+    "le": '<path d="m6 9 6 6 6-6"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     "radir": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
 }
 
@@ -247,7 +253,8 @@ class TorIndito(QThread):
         torrc.touch()
         try:
             self.folyamat = subprocess.Popen(
-                ["tor", "--defaults-torrc", str(torrc), "-f", str(torrc), "--SocksPort", str(TOR_PORT), "--DataDirectory", str(adat), "--Log", "notice stdout"],
+                ["tor", "--defaults-torrc", str(torrc), "-f", str(torrc), "--SocksPort", str(TOR_PORT), "--DataDirectory", str(adat),
+                 "--ControlPort", f"127.0.0.1:{TOR_PORT + 1}", "--CookieAuthentication", "1", "--Log", "notice stdout"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
         except FileNotFoundError:
@@ -347,6 +354,18 @@ class Oldal(QWebEnginePage):
     def __init__(self, lap):
         super().__init__(lap.identitas.profil, lap)
         self.lap = lap
+
+    def acceptNavigationRequest(self, url, tipus, fokeret):
+        if fokeret:
+            A = QWebEngineSettings.WebAttribute
+            szint = self.lap.ablak.szint
+            js = self.lap.identitas.profil.settings().testAttribute(A.JavascriptEnabled)
+            if szint == 2 or (szint == 1 and url.scheme() == "http" and not szuro.helyi(url.host())):
+                js = False
+            self.settings().setAttribute(A.JavascriptEnabled, js)
+            self.settings().setAttribute(A.WebGLEnabled, szint == 0)
+            self.settings().setAttribute(A.ForceDarkMode, self.lap.ablak.sotet)
+        return super().acceptNavigationRequest(url, tipus, fokeret)
 
     def createWindow(self, tipus):
         hatter = tipus == QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
@@ -589,6 +608,9 @@ class Ablak(QMainWindow):
         self.kozmetika_kesz = False
         self.bezartak: list[tuple[str, Identitas]] = []
         self.nagyitas: dict[str, float] = {}
+        self.szint = 0
+        self.sotet = False
+        self.felolvaso: list[subprocess.Popen] = []
         self.lapok: list[Lap] = []
         self.letoltesek: list[dict] = []
 
@@ -641,7 +663,7 @@ class Ablak(QMainWindow):
         racs.setHorizontalSpacing(12)
         racs.setVerticalSpacing(4)
         self.allapot: dict[str, QLabel] = {}
-        for i, nev in enumerate(["Tiltólista", "DNS", "Identitás", "Letöltés"]):
+        for i, nev in enumerate(["Tiltólista", "DNS", "Szint", "Identitás", "Letöltés"]):
             c = QLabel(nev, objectName="allapotnev")
             e = QLabel(objectName="allapotertek")
             e.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -717,6 +739,28 @@ class Ablak(QMainWindow):
         self.pajzs.clicked.connect(self.pajzs_menu)
         eh.addWidget(self.pajzs)
         jv.addWidget(self.eszkozsor)
+        self.keresosav = QFrame(objectName="eszkozsor")
+        kh = QHBoxLayout(self.keresosav)
+        kh.setContentsMargins(12, 8, 12, 8)
+        kh.setSpacing(4)
+        self.keresomezo = QLineEdit()
+        self.keresomezo.setPlaceholderText("Keresés az oldalon")
+        self.keresomezo.setFixedSize(320, 32)
+        self.keresomezo.textChanged.connect(lambda _: self.keres_lep())
+        self.keresomezo.returnPressed.connect(lambda: self.keres_lep(QGuiApplication.keyboardModifiers() & Qt.ShiftModifier))
+        self.talalat = QLabel(objectName="szam")
+        kh.addWidget(self.keresomezo)
+        for nev, fv in [("fel", lambda: self.keres_lep(True)), ("le", lambda: self.keres_lep()), ("x", self.keres_zar)]:
+            tb = QToolButton()
+            tb.setIcon(ikon(nev))
+            tb.setFixedSize(32, 32)
+            tb.clicked.connect(fv)
+            kh.addWidget(tb)
+        kh.addSpacing(8)
+        kh.addWidget(self.talalat)
+        kh.addStretch()
+        self.keresosav.hide()
+        jv.addWidget(self.keresosav)
         self.tolto = QProgressBar()
         self.tolto.setTextVisible(False)
         self.tolto.setFixedHeight(2)
@@ -773,7 +817,9 @@ class Ablak(QMainWindow):
             ("Ctrl+-", lambda: self.nagyit(-0.1)),
             ("Ctrl+0", lambda: self.nagyit(None)),
             ("Ctrl+P", self.pdf),
-            ("Escape", lambda: self.akt().page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen) if self.isFullScreen() else None),
+            ("Escape", lambda: self.keres_zar() if self.keresosav.isVisible() else (self.akt().page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen) if self.isFullScreen() else None)),
+            ("Ctrl+Shift+L", self.uj_aramkor),
+            ("Ctrl+Shift+U", self.felolvas),
         ]:
             QShortcut(QKeySequence(kulcs), self, fv)
 
@@ -960,6 +1006,7 @@ class Ablak(QMainWindow):
             dns = "rendszer" if RENDSZER_DNS else "titkosított"
         self.allapot["Tiltólista"].setText(f"{len(self.blokk.lista):,}".replace(",", " "))
         self.allapot["DNS"].setText(dns)
+        self.allapot["Szint"].setText(SZINTEK[self.szint].lower())
         self.allapot["Identitás"].setText(f"{len({id(l.identitas) for l in self.lapok})} ({len(self.lapok)} lap)")
 
     def tor_allapot(self, sz):
@@ -1013,6 +1060,16 @@ class Ablak(QMainWindow):
             a.setCheckable(True)
             a.setChecked(host not in ENGEDETT)
             a.toggled.connect(lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), self.kozmetika(), lap.reload()))
+        sz = m.addMenu("Biztonsági szint")
+        for i, nev in enumerate(SZINTEK):
+            a = sz.addAction(nev + ["", ": WebGL ki, http-n JavaScript ki", ": JavaScript és WebGL mindenhol ki"][i])
+            a.setCheckable(True)
+            a.setChecked(self.szint == i)
+            a.triggered.connect(lambda _=False, i=i: self.szint_allit(i))
+        st = m.addAction("Sötét mód minden oldalon")
+        st.setCheckable(True)
+        st.setChecked(self.sotet)
+        st.toggled.connect(lambda _: self.sotet_valt())
         s = lap.identitas.profil.settings()
         A = QWebEngineSettings.WebAttribute
         js = m.addAction("JavaScript ebben az identitásban")
@@ -1058,6 +1115,10 @@ class Ablak(QMainWindow):
              lambda: (self.kj_felold() if not self.szef.nyitva() else self.szef.zar(), self.kj_frissit())),
             ("Osztott nézet be/ki", lambda: self.osztott_valt()),
             ("Olvasó mód", self.olvaso),
+            ("Felolvasás be/ki", self.felolvas),
+            ("Sötét mód minden oldalon be/ki", self.sotet_valt),
+            *[(f"Biztonsági szint: {n}", lambda i=i: self.szint_allit(i)) for i, n in enumerate(SZINTEK)],
+            ("Új Tor-útvonal és új identitás", self.uj_aramkor),
             ("Keresés az oldalon", self.keres),
             ("Mentés PDF-be", self.pdf),
             ("Képernyőkép", self.kepernyokep),
@@ -1179,8 +1240,79 @@ class Ablak(QMainWindow):
             self.akt().printToPdf(ut)
 
     def keres(self):
-        s, ok = QInputDialog.getText(self, "Keresés az oldalon", "Szöveg")
-        self.akt().findText(s if ok else "")
+        self.keresosav.show()
+        self.keresomezo.setFocus()
+        self.keresomezo.selectAll()
+        self.keres_lep()
+
+    def keres_lep(self, vissza=False):
+        szoveg = self.keresomezo.text()
+        jelzo = QWebEnginePage.FindFlag.FindBackward if vissza else QWebEnginePage.FindFlag(0)
+
+        def eredmeny(r):
+            self.talalat.setText(f"{r.activeMatch()} / {r.numberOfMatches()}" if szoveg and r.numberOfMatches() else ("nincs találat" if szoveg else ""))
+
+        self.akt().findText(szoveg, jelzo, eredmeny)
+
+    def keres_zar(self):
+        self.keresosav.hide()
+        self.akt().findText("")
+        self.akt().setFocus()
+
+    def szint_allit(self, szint):
+        self.szint = szint
+        self.info_frissit()
+        for lap in self.lapok:
+            lap.reload()
+
+    def sotet_valt(self):
+        self.sotet = not self.sotet
+        for lap in self.lapok:
+            lap.page().settings().setAttribute(QWebEngineSettings.WebAttribute.ForceDarkMode, self.sotet)
+        self.akt().reload()
+
+    def uj_aramkor(self):
+        if not TOR:
+            QMessageBox.information(self, "Új Tor-útvonal", "Ez csak Tor módban működik (Ctrl+Shift+O)")
+            return
+        suti = CACHE / "tor" / "control_auth_cookie"
+        try:
+            with socket.create_connection(("127.0.0.1", TOR_PORT + 1), timeout=5) as s:
+                s.sendall(f"AUTHENTICATE {suti.read_bytes().hex()}\r\nSIGNAL NEWNYM\r\nQUIT\r\n".encode())
+                valasz = s.recv(1024).decode(errors="ignore")
+        except OSError as h:
+            QMessageBox.warning(self, "Új Tor-útvonal", f"A Tor vezérlője nem érhető el ({h}). Csak a saját indítású Torral megy, a rendszer-Torral nem.")
+            return
+        if valasz.count("250") < 2:
+            QMessageBox.warning(self, "Új Tor-útvonal", "A Tor nem fogadta el a kérést")
+            return
+        url = self.akt().url().toString()
+        self.uj_lap(url=None if url in ("about:blank", "") else url)
+
+    def felolvas(self):
+        if any(p.poll() is None for p in self.felolvaso):
+            for p in self.felolvaso:
+                p.kill()
+            self.felolvaso = []
+            return
+        if not (Path(PIPER).exists() and Path(PIPER_HANG).exists()):
+            QMessageBox.information(self, "Felolvasás", f"Nincs meg a Piper vagy a hang.\nARNYEK_PIPER={PIPER}\nARNYEK_HANG={PIPER_HANG}")
+            return
+        js = ("(()=>{const k=String(getSelection()).trim();if(k)return k;"
+              "const e=document.querySelector('article,main,[role=main]')||document.body;return e.innerText})()")
+
+        def indit(szoveg):
+            szoveg = re.sub(r"\s+", " ", szoveg or "").strip()[:8000]
+            if not szoveg:
+                return
+            piper = subprocess.Popen([PIPER, "--model", PIPER_HANG, "--output-raw"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            lejatszo = subprocess.Popen(["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw", "-c", "1"], stdin=piper.stdout)
+            piper.stdout.close()
+            piper.stdin.write(szoveg.encode())
+            piper.stdin.close()
+            self.felolvaso = [piper, lejatszo]
+
+        self.akt().page().runJavaScript(js, QWebEngineScript.ScriptWorldId.ApplicationWorld, indit)
 
     def fejleszto(self):
         v = QWebEngineView()
@@ -1319,6 +1451,8 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 </main></body></html>"""
 
     def leallit(self):
+        for p in self.felolvaso:
+            p.kill()
         if self.tor and self.tor.folyamat:
             self.tor.folyamat.terminate()
 
