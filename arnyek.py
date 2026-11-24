@@ -24,6 +24,7 @@ CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "arnyek
 ADAT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "arnyek"
 HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 EASYLIST_URL = "https://easylist.to/easylist/easylist.txt"
+HUFILTER_URL = "https://raw.githubusercontent.com/hufilter/hufilter/gh-pages/hufilter.txt"
 KERESO = os.environ.get("ARNYEK_KERESO", "https://duckduckgo.com/?q={}")
 DOH = os.environ.get("ARNYEK_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
@@ -193,6 +194,7 @@ class Blokklista(QThread):
         self.lista = set(szuro.ALAP_TILTOTT)
         self.css = ""
         self.oldal: dict[str, list[str]] = {}
+        self.kivetel: dict[str, set[str]] = {}
 
     def run(self):
         try:
@@ -201,8 +203,10 @@ class Blokklista(QThread):
                 self.lista = set(szuro.ALAP_TILTOTT) | szuro.hosts_beolvas(adat)
                 self.betoltve.emit(len(self.lista))
             adat = self.friss("easylist.txt", EASYLIST_URL, lambda a: a.count("##") > 1000)
-            if adat:
-                altalanos, self.oldal = szuro.kozmetikus_beolvas(adat)
+            hu = self.friss("hufilter.txt", HUFILTER_URL, lambda a: a.count("##") > 100)
+            self.lista = self.lista | szuro.abp_tartomanyok(hu)
+            if adat or hu:
+                altalanos, self.oldal, self.kivetel = szuro.kozmetikus_beolvas(adat + "\n" + hu)
                 self.css = szuro.kozmetikus_css(altalanos)
         except Exception:
             pass
@@ -390,7 +394,7 @@ class Lap(QWebEngineView):
             self.identitas.kivetelek.add(u.host())
             u.setScheme("http")
             self.setUrl(u)
-        sel = szuro.oldal_szelektorok(u.host(), self.ablak.blokk.oldal) if ok and u.host() not in ENGEDETT else []
+        sel = szuro.oldal_szelektorok(u.host(), self.ablak.blokk.oldal, self.ablak.blokk.kivetel) if ok and u.host() not in ENGEDETT else []
         if sel:
             self.page().runJavaScript(css_js(szuro.kozmetikus_css(sel)), QWebEngineScript.ScriptWorldId.ApplicationWorld)
         self.ablak.lap_frissult(self)
@@ -927,7 +931,7 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 <div class="mag">mag {idt.mag} · bezáráskor nyomtalanul eltűnik</div>
 <dl>
 <dt>Sütik</dt><dd>Csak ez az identitás látja őket</dd>
-<dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, a minta balra</dd>
+<dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, ez a mintája</dd>
 <dt>Hálózat</dt><dd>{halo}</dd>
 <dt>WebRTC</dt><dd>{"Kikapcsolva, csak Toron át mehetne" if TOR else "Helyi cím rejtve, a hívás működik"}</dd>
 <dt>Lemez</dt><dd>Nincs előzmény, nincs gyorsítótár</dd>

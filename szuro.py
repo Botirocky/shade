@@ -63,10 +63,17 @@ def hosts_beolvas(szoveg: str) -> set[str]:
     return ki
 
 
-def kozmetikus_beolvas(szoveg: str) -> tuple[list[str], dict[str, list[str]]]:
-    altalanos, oldal = [], {}
+def kozmetikus_beolvas(szoveg: str) -> tuple[list[str], dict[str, list[str]], dict[str, set[str]]]:
+    altalanos, oldal, kivetel = [], {}, {}
     for sor in szoveg.splitlines():
-        if sor.startswith(("!", "[")) or "##" not in sor or re.search(r"#[@?$%]#|##\+js", sor):
+        if sor.startswith(("!", "[")) or "#" not in sor:
+            continue
+        if "#@#" in sor:
+            domainek, sel = sor.split("#@#", 1)
+            if domainek and not re.search(r"[~{]|^\+js", sel + domainek):
+                kivetel.setdefault(sel, set()).update(d.lower() for d in domainek.split(","))
+            continue
+        if "##" not in sor or re.search(r"#[?$%]#|##\+js", sor):
             continue
         domainek, sel = sor.split("##", 1)
         if not sel or "{" in sel:
@@ -76,16 +83,27 @@ def kozmetikus_beolvas(szoveg: str) -> tuple[list[str], dict[str, list[str]]]:
         elif "~" not in domainek:
             for d in domainek.split(","):
                 oldal.setdefault(d.lower(), []).append(sel)
-    return altalanos, oldal
+    oldal["*"] = [x for x in altalanos if x in kivetel]
+    return [x for x in altalanos if x not in kivetel], oldal, kivetel
+
+
+def abp_tartomanyok(szoveg: str) -> set[str]:
+    return {m.group(1).lower() for m in re.finditer(r"(?m)^\|\|([a-z0-9.-]+\.[a-z]{2,})\^$", szoveg)}
+
+
+def _illik(host: str, domainek) -> bool:
+    return any(host == d or host.endswith("." + d) for d in domainek)
 
 
 def kozmetikus_css(szelektorok: list[str]) -> str:
     return "".join(f"{s}{{display:none!important}}\n" for s in szelektorok)
 
 
-def oldal_szelektorok(host: str, oldal: dict[str, list[str]]) -> list[str]:
-    reszek = host.lower().split(".")
-    return [s for i in range(len(reszek) - 1) for s in oldal.get(".".join(reszek[i:]), [])]
+def oldal_szelektorok(host: str, oldal: dict[str, list[str]], kivetel: dict[str, set[str]] | None = None) -> list[str]:
+    host = host.lower()
+    reszek = host.split(".")
+    jeloltek = oldal.get("*", []) + [s for i in range(len(reszek) - 1) for s in oldal.get(".".join(reszek[i:]), [])]
+    return [s for s in jeloltek if not _illik(host, (kivetel or {}).get(s, ()))]
 
 
 def cim_ertelmez(szoveg: str, kereso: str) -> str:
@@ -114,10 +132,13 @@ if __name__ == "__main__":
     assert cim_ertelmez("picloud.park.lan:8094", k) == "http://picloud.park.lan:8094"
     assert cim_ertelmez("mi az a tor", k) == "https://duckduckgo.com/?q=mi+az+a+tor"
     assert cim_ertelmez("localhost:3000", k) == "http://localhost:3000"
-    a, o = kozmetikus_beolvas("! x\n##.ad\nindex.hu,telex.hu##.banner\n~x.hu##.no\nfoo.com#@#.ad\nbar.com#?#div:has-text(x)\n##+js(x)\n###top-ad")
-    assert a == [".ad", "#top-ad"], a
-    assert o == {"index.hu": [".banner"], "telex.hu": [".banner"]}, o
-    assert oldal_szelektorok("www.index.hu", o) == [".banner"]
-    assert oldal_szelektorok("hu", o) == []
+    a, o, k = kozmetikus_beolvas("! x\n##.ad\nindex.hu,telex.hu##.banner\n~x.hu##.no\nfoo.com#@#.ad\nbar.com#?#div:has-text(x)\n##+js(x)\n###top-ad")
+    assert a == ["#top-ad"], a
+    assert o == {"index.hu": [".banner"], "telex.hu": [".banner"], "*": [".ad"]}, o
+    assert k == {".ad": {"foo.com"}}, k
+    assert oldal_szelektorok("www.index.hu", o, k) == [".ad", ".banner"]
+    assert oldal_szelektorok("www.foo.com", o, k) == []
+    assert oldal_szelektorok("hu", o, k) == [".ad"]
+    assert abp_tartomanyok("||ads.hu^\n||x.hu^$third-party\n||*$image\n") == {"ads.hu"}
     assert kozmetikus_css([".ad"]) == ".ad{display:none!important}\n"
     print("szuro: minden teszt ok")
