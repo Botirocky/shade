@@ -6,6 +6,7 @@ import secrets
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from collections import Counter
@@ -22,6 +23,28 @@ DOH = os.environ.get("ARNYEK_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
 TOR = "--tor" in ARGS
 RENDSZER_DNS = "--rendszer-dns" in ARGS
+HELYI_ZONAK = os.environ.get("ARNYEK_HELYI", "nagy.park.lan park.lan").split()
+ENGEDETT: set[str] = set()
+if TOR:
+    os.environ["TZ"] = "UTC"
+
+
+def helyi_szabalyok() -> list[str]:
+    talalt = {}
+
+    def proba(z):
+        try:
+            talalt[z] = socket.getaddrinfo(z, 80, socket.AF_INET)[0][4][0]
+        except OSError:
+            pass
+
+    szalak = [threading.Thread(target=proba, args=(z,), daemon=True) for z in HELYI_ZONAK]
+    for t in szalak:
+        t.start()
+    hatarido = time.time() + 1.5
+    for t in szalak:
+        t.join(max(0, hatarido - time.time()))
+    return [f"MAP *.{z} {talalt[z]}, MAP {z} {talalt[z]}" for z in HELYI_ZONAK if z in talalt]
 
 
 def port_nyitva(port: int) -> bool:
@@ -33,10 +56,9 @@ def port_nyitva(port: int) -> bool:
 TOR_PORT = 9050 if (TOR and port_nyitva(9050)) else 9350
 
 
-def chromium_flagek() -> str:
+def chromium_flagek() -> list[str]:
     f = [
-        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--force-webrtc-ip-handling-policy=" + ("disable_non_proxied_udp" if TOR else "default_public_interface_only"),
         "--no-pings",
         "--disable-breakpad",
         "--disable-domain-reliability",
@@ -54,13 +76,14 @@ def chromium_flagek() -> str:
     if TOR:
         f += [
             f"--proxy-server=socks5://127.0.0.1:{TOR_PORT}",
-            '--host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE 127.0.0.1"',
+            "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1",
             "--disable-quic",
         ]
-    return " ".join([os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")] + f).strip()
-
-
-os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = chromium_flagek()
+    elif not RENDSZER_DNS:
+        sz = helyi_szabalyok()
+        if sz:
+            f.append("--host-resolver-rules=" + ", ".join(sz))
+    return f
 
 from PySide6.QtCore import QByteArray, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
@@ -72,7 +95,7 @@ from PySide6.QtWebEngineCore import (
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QApplication, QMenu, QFileDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QStackedWidget, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -147,18 +170,24 @@ class TorIndito(QThread):
             return
         adat = CACHE / "tor"
         adat.mkdir(parents=True, exist_ok=True, mode=0o700)
+        torrc = CACHE / "torrc"
+        torrc.touch()
         try:
             self.folyamat = subprocess.Popen(
-                ["tor", "--SocksPort", str(TOR_PORT), "--DataDirectory", str(adat), "--Log", "notice stdout"],
+                ["tor", "--defaults-torrc", str(torrc), "-f", str(torrc), "--SocksPort", str(TOR_PORT), "--DataDirectory", str(adat), "--Log", "notice stdout"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
         except FileNotFoundError:
             self.allapot.emit(-1)
             return
+        utolso = 0
         for sor in self.folyamat.stdout:
             m = re.search(r"Bootstrapped (\d+)%", sor)
             if m:
-                self.allapot.emit(int(m.group(1)))
+                utolso = int(m.group(1))
+                self.allapot.emit(utolso)
+        if utolso < 100:
+            self.allapot.emit(-2)
 
 
 class Identitas:
@@ -216,7 +245,7 @@ class Elfogo(QWebEngineUrlRequestInterceptor):
                     self.felhuzott.add(url.host())
                 info.redirect(QUrl(uj))
                 return
-        else:
+        elif info.firstPartyUrl().host() not in ENGEDETT:
             d = szuro.tiltott(url.host(), self.lista.lista)
             if d:
                 info.block(True)
@@ -259,6 +288,15 @@ class Lap(QWebEngineView):
         pg.fullScreenRequested.connect(ablak.teljes_kepernyo)
         pg.desktopMediaRequested.connect(lambda r: r.selectScreen(r.screensModel().index(0, 0)))
         self.loadFinished.connect(self.betoltott)
+        self.host = ""
+        self.urlChanged.connect(self.uj_cim)
+        pg.recentlyAudibleChanged.connect(lambda _: ablak.lap_frissult(self))
+        pg.audioMutedChanged.connect(lambda _: ablak.lap_frissult(self))
+
+    def uj_cim(self, u):
+        if u.host() != self.host:
+            self.host = u.host()
+            self.blokkolva.clear()
 
     def blokk(self, d):
         self.blokkolva[d] += 1
@@ -299,10 +337,10 @@ class LapSor(QWidget):
         h.addWidget(self.cim, 1)
         h.addWidget(self.szam)
 
-    def beallit(self, cim, szam):
+    def beallit(self, cim, szam, hang=""):
         fm = self.cim.fontMetrics()
-        self.cim.setText(fm.elidedText(cim or "Új lap", Qt.ElideRight, 150))
-        self.szam.setText(str(szam) if szam else "")
+        self.cim.setText(fm.elidedText(cim or "Új lap", Qt.ElideRight, 150 if not hang else 110))
+        self.szam.setText(" ".join(x for x in (hang, str(szam) if szam else "") if x))
 
 
 class LapLista(QListWidget):
@@ -335,7 +373,12 @@ QToolButton {{ background: transparent; border: none; border-radius: 8px; paddin
 QToolButton:hover {{ background: {SZIN['emelt']}; }}
 QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; text-align: left; color: {SZIN['masod']}; }}
 QPushButton:hover {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
-#pajzs {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; padding: 0 4px; }}
+#pajzs {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; padding: 4px 8px; }}
+QMenu {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 10px; padding: 4px; }}
+QMenu::item {{ padding: 6px 12px; border-radius: 6px; }}
+QMenu::item:selected {{ background: rgba(236,236,240,0.06); }}
+QMenu::item:disabled {{ color: {SZIN['halk']}; font-family: 'JetBrains Mono'; font-size: 11px; }}
+QMenu::separator {{ height: 1px; background: {SZIN['vonal']}; margin: 4px 8px; }}
 QProgressBar {{ background: transparent; border: none; max-height: 2px; }}
 QProgressBar::chunk {{ background: {SZIN['lampa']}; }}
 QMessageBox, QInputDialog, QFileDialog {{ background: {SZIN['felulet']}; }}
@@ -373,6 +416,8 @@ class Ablak(QMainWindow):
         self.lista = LapLista()
         self.lista.currentRowChanged.connect(self.valt)
         self.lista.kozepso.connect(self.bezar)
+        self.lista.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.lista.customContextMenuRequested.connect(self.lap_menu)
         ov.addWidget(self.lista, 1)
         self.info = QLabel(objectName="info")
         self.info.setWordWrap(True)
@@ -411,10 +456,10 @@ class Ablak(QMainWindow):
         self.cim.addAction(self.lakat, QLineEdit.LeadingPosition)
         eh.addWidget(self.cim, 1)
         eh.addSpacing(8)
-        pi = QLabel()
-        pi.setPixmap(ikon("pajzs").pixmap(16, 16))
-        eh.addWidget(pi)
-        self.pajzs = QLabel("0", objectName="pajzs")
+        self.pajzs = QToolButton(objectName="pajzs")
+        self.pajzs.setIcon(ikon("pajzs"))
+        self.pajzs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.pajzs.clicked.connect(self.pajzs_menu)
         eh.addWidget(self.pajzs)
         jv.addWidget(self.eszkozsor)
         self.tolto = QProgressBar()
@@ -439,7 +484,7 @@ class Ablak(QMainWindow):
             ("F5", lambda: self.akt().reload()), ("Ctrl+R", lambda: self.akt().reload()),
             ("Alt+Left", lambda: self.akt().back()), ("Alt+Right", lambda: self.akt().forward()),
             ("Ctrl+Shift+Del", self.kiurit), ("Ctrl+Shift+O", self.tor_valt),
-            ("Ctrl+F", self.keres), ("F12", self.fejleszto),
+            ("Ctrl+F", self.keres), ("Ctrl+Shift+R", self.olvaso), ("Ctrl+M", lambda: self.nemit(self.akt())), ("F12", self.fejleszto),
             ("Ctrl++", lambda: self.akt().setZoomFactor(self.akt().zoomFactor() + 0.1)),
             ("Ctrl+=", lambda: self.akt().setZoomFactor(self.akt().zoomFactor() + 0.1)),
             ("Ctrl+-", lambda: self.akt().setZoomFactor(max(0.3, self.akt().zoomFactor() - 0.1))),
@@ -484,7 +529,7 @@ class Ablak(QMainWindow):
         if not hatterben:
             self.lista.setCurrentRow(self.lista.count() - 1)
             if not url:
-                QTimer.singleShot(0, lambda: (self.cim.setFocus(), self.cim.clear()))
+                QTimer.singleShot(0, lambda: (self.cim.setFocus(), self.cim.clear()) if lap is self.akt() else None)
         self.lap_frissult(lap)
         return lap
 
@@ -519,7 +564,9 @@ class Ablak(QMainWindow):
         sor = self.lista.itemWidget(self.lista.item(i))
         ures = lap.url().toString() in ("about:blank", "")
         if sor:
-            sor.beallit("Új lap" if ures else lap.title(), sum(lap.blokkolva.values()))
+            pg = lap.page()
+            hang = "néma" if pg.isAudioMuted() else ("hang" if pg.recentlyAudible() else "")
+            sor.beallit("Új lap" if ures else lap.title(), sum(lap.blokkolva.values()), hang)
         if lap is self.akt():
             if not self.cim.hasFocus():
                 self.cim.setText("" if ures else lap.url().toString())
@@ -527,8 +574,10 @@ class Ablak(QMainWindow):
             self.lakat.setIcon(ikon("lakat") if titkos else ikon("nyitott", SZIN["lampa"]))
             self.lakat.setToolTip("Titkosított kapcsolat" if titkos else "Titkosítatlan kapcsolat, ezen a lapon minden lehallgatható")
             n = sum(lap.blokkolva.values())
-            self.pajzs.setText(str(n))
-            self.pajzs.setToolTip("\n".join(f"{d}  {c}" for d, c in lap.blokkolva.most_common(12)) or "Ezen a lapon még nem volt mit blokkolni")
+            ki = lap.url().host() in ENGEDETT
+            self.pajzs.setText("ki" if ki else str(n))
+            self.pajzs.setIcon(ikon("pajzs", SZIN["lampa"] if ki else SZIN["masod"]))
+            self.pajzs.setToolTip("Blokkolás és adatvédelem ezen az oldalon")
             self.setWindowTitle(("Árnyék" if ures else f"{lap.title()} · Árnyék"))
 
     def megnyit(self):
@@ -549,7 +598,7 @@ class Ablak(QMainWindow):
 
     def tor_allapot(self, sz):
         if sz < 0:
-            QMessageBox.warning(self, "Tor", "A tor nincs telepítve. Telepítés: sudo pacman -S tor")
+            QMessageBox.warning(self, "Tor", "A tor nincs telepítve. Telepítés: sudo pacman -S tor" if sz == -1 else "A tor leállt, mielőtt kapcsolódott volna. Most semmi nem megy ki a hálózatra.")
             sz = 0
         self.tor_szazalek = sz
         self.info_frissit()
@@ -576,6 +625,54 @@ class Ablak(QMainWindow):
         Identitas.szamlalo = 0
         self.uj_lap()
         self.info_frissit()
+
+    def pajzs_menu(self):
+        lap = self.akt()
+        host = lap.url().host()
+        m = QMenu(self)
+        if lap.blokkolva:
+            for d, c in lap.blokkolva.most_common(8):
+                m.addAction(f"{d}   {c}").setEnabled(False)
+        else:
+            m.addAction("Ezen az oldalon nem volt mit blokkolni").setEnabled(False)
+        m.addSeparator()
+        if host:
+            a = m.addAction(f"Blokkolás itt: {host}")
+            a.setCheckable(True)
+            a.setChecked(host not in ENGEDETT)
+            a.toggled.connect(lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), lap.reload()))
+        s = lap.identitas.profil.settings()
+        A = QWebEngineSettings.WebAttribute
+        js = m.addAction("JavaScript ebben az identitásban")
+        js.setCheckable(True)
+        js.setChecked(s.testAttribute(A.JavascriptEnabled))
+        js.toggled.connect(lambda be: (s.setAttribute(A.JavascriptEnabled, be), lap.reload()))
+        m.addSeparator()
+        m.addAction("Sütik és gyorsítótár törlése ebben az identitásban", lambda: (
+            lap.identitas.profil.cookieStore().deleteAllCookies(), lap.identitas.profil.clearHttpCache(), lap.reload()))
+        m.addAction("Megnyitás új identitásban", lambda: self.uj_lap(url=lap.url().toString()))
+        m.exec(self.pajzs.mapToGlobal(self.pajzs.rect().bottomLeft()))
+
+    def nemit(self, lap):
+        lap.page().setAudioMuted(not lap.page().isAudioMuted())
+
+    def lap_menu(self, pont):
+        it = self.lista.itemAt(pont)
+        if not it:
+            return
+        i = self.lista.row(it)
+        lap = self.lapok[i]
+        m = QMenu(self)
+        m.addAction("Hang vissza" if lap.page().isAudioMuted() else "Némítás", lambda: self.nemit(lap))
+        m.addAction("Újra új identitásban", lambda: self.uj_lap(url=lap.url().toString()))
+        m.addAction("Lap ugyanebben az identitásban", lambda: self.uj_lap(lap.identitas))
+        m.addSeparator()
+        m.addAction("Bezárás", lambda: self.bezar(self.lapok.index(lap)))
+        m.addAction("Többi bezárása", lambda: [self.bezar(self.lapok.index(x)) for x in list(self.lapok) if x is not lap])
+        m.exec(self.lista.viewport().mapToGlobal(pont))
+
+    def olvaso(self):
+        self.akt().page().runJavaScript((MAPPA / "olvaso.js").read_text(), QWebEngineScript.ScriptWorldId.ApplicationWorld)
 
     def pdf(self):
         ut, _ = QFileDialog.getSaveFileName(self, "Mentés PDF-be", str(Path.home() / "lap.pdf"))
@@ -667,14 +764,14 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 <dt>Sütik</dt><dd>Csak ez az identitás látja, bezáráskor törlődnek</dd>
 <dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, <span class="mono">mag {idt.mag}</span></dd>
 <dt>Hálózat</dt><dd>{halo}</dd>
-<dt>WebRTC</dt><dd>Nem árulja el a helyi címet</dd>
+<dt>WebRTC</dt><dd>{"Kikapcsolva, csak a Toron át mehetne" if TOR else "A helyi címed rejtve marad, hívás működik"}</dd>
 <dt>Lemez</dt><dd>Semmi nem kerül ki: se előzmény, se gyorsítótár</dd>
 </dl></section>
 <section><h2>Blokkolva ebben a munkamenetben</h2>
 <div class="nagy">{osszes}</div><div class="al">kérés, {len(self.munkamenet)} követő tartományból</div>
 <ul>{sorok}</ul></section>
 </div>
-<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
+<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
 </main></body></html>"""
 
     def leallit(self):
@@ -694,7 +791,7 @@ def main():
         m.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureOnly
         m.serverTemplates = [DOH]
         QWebEngineGlobalSettings.setDnsMode(m)
-    app = QApplication([sys.argv[0]])
+    app = QApplication([sys.argv[0], "--webEngineArgs"] + chromium_flagek())
     app.setApplicationName("Árnyék")
     app.setDesktopFileName("arnyek")
     app.setStyleSheet(STILUS)

@@ -19,7 +19,7 @@
   const zajosit = (adat) => {
     const d = adat.data;
     for (let i = 0; i < d.length; i += 4) {
-      if (rnd(i) < 0.02) d[i] = d[i] ^ 1;
+      if (d[i + 3] && rnd(i) < 0.02) d[i] = d[i] ^ 1;
     }
     return adat;
   };

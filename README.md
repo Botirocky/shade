@@ -7,8 +7,11 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - Követő URL-paraméterek levágása (utm_*, fbclid, gclid…), http → https emelés visszaeséssel
 - Harmadik féltől jövő sütik tiltva, `Sec-GPC: 1`
 - Vászon-, hang- és WebGL-ujjlenyomat zajosítva identitásonként
-- Titkosított DNS (Mullvad DoH), WebRTC nem árulja el a helyi címet
-- Tor mód: saját tor-folyamatot indít, ha nincs futó
+- Titkosított DNS (Mullvad DoH); a `*.park.lan` és `*.nagy.park.lan` indításkor a rendszer-DNS-ből kerül feloldásra (`ARNYEK_HELYI`)
+- WebRTC: a helyi cím rejtve, hívás működik; Tor módban teljesen ki
+- Tor mód: saját tor-folyamatot indít (9350), ha nincs futó; időzóna UTC; ellenőrizve: check.torproject.org → IsTor true
+- Pajzs-menü: blokkolt tartományok, blokkolás ki ezen az oldalon, JavaScript ki/be identitásonként, sütik törlése
+- Olvasó mód (Ctrl Shift R), lap-menü (jobb klikk): némítás, újranyitás új identitásban, többi bezárása
 - Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
 
 ## Indítás
@@ -27,6 +30,8 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 | Ctrl W / középső klikk | lap bezárása |
 | Ctrl Shift Del | kiürítés: minden lap, identitás és a vágólap törlése |
 | Ctrl Shift O | Tor mód be/ki (újraindul) |
+| Ctrl Shift R | olvasó mód |
+| Ctrl M | némítás |
 | Ctrl L, Ctrl F, Ctrl P, F12 | cím, keresés, PDF, fejlesztői eszközök |
 
 Teszt: `python szuro.py`
