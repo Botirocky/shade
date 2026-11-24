@@ -223,7 +223,7 @@ class Identitas:
         js.setRunsOnSubFrames(True)
         p.scripts().insert(js)
         p.downloadRequested.connect(ablak.letoltes)
-        p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Árnyék", n.title(), n.message()]))
+        p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Árnyék", "--", n.title(), n.message()]))
 
 
 class Elfogo(QWebEngineUrlRequestInterceptor):
@@ -712,7 +712,7 @@ class Ablak(QMainWindow):
         d.setDownloadFileName(Path(ut).name)
         d.receivedBytesChanged.connect(lambda: self.info.setText(
             f"Letöltés: {d.downloadFileName()[:22]}\n{d.receivedBytes() * 100 // max(d.totalBytes(), 1)}%"))
-        d.isFinishedChanged.connect(lambda: (self.info_frissit(), subprocess.Popen(["notify-send", "-a", "Árnyék", "Letöltve", d.downloadFileName()])))
+        d.isFinishedChanged.connect(lambda: (self.info_frissit(), subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve", d.downloadFileName()])))
         d.accept()
 
     def kezdolap(self, idt: Identitas) -> str:
