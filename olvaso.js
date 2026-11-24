@@ -1,5 +1,5 @@
 (() => {
-  if (document.documentElement.dataset.arnyekOlvaso) { location.reload(); return; }
+  if (document.documentElement.dataset.shadeOlvaso) { location.reload(); return; }
   const hossz = (el) => [...el.querySelectorAll("p")].reduce((n, p) => n + p.innerText.trim().length, 0);
   let legjobb = document.querySelector("article");
   if (!legjobb || hossz(legjobb) < 400) {
@@ -32,7 +32,7 @@
   }
   const perc = Math.max(1, Math.round(tiszta.innerText.split(/\s+/).length / 220));
   const forras = location.hostname.replace(/^www\./, "");
-  document.documentElement.dataset.arnyekOlvaso = "1";
+  document.documentElement.dataset.shadeOlvaso = "1";
   const eredetiCim = document.title;
   document.head.innerHTML = `<meta charset="utf-8"><style>
     :root { color-scheme: dark }

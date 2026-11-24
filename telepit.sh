@@ -7,9 +7,9 @@ APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 IKONOK="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
 
 if [[ "${1:-}" == "--eltavolit" ]]; then
-    rm -f "$BIN/arnyek" "$APPS/arnyek.desktop" "$IKONOK/arnyek.svg"
+    rm -f "$BIN/shade" "$APPS/shade.desktop" "$IKONOK/shade.svg"
     update-desktop-database "$APPS" 2>/dev/null || true
-    echo "Az Árnyék eltávolítva. A könyvjelzők megmaradtak: ${XDG_DATA_HOME:-$HOME/.local/share}/arnyek"
+    echo "A Shade eltávolítva. A könyvjelzők megmaradtak: ${XDG_DATA_HOME:-$HOME/.local/share}/shade"
     exit 0
 fi
 
@@ -29,39 +29,40 @@ if ((${#hiany[@]})); then
 fi
 
 mkdir -p "$BIN" "$APPS" "$IKONOK"
-cat > "$BIN/arnyek" <<EOF
+rm -f "$BIN/arnyek" "$APPS/arnyek.desktop" "$IKONOK/arnyek.svg"
+cat > "$BIN/shade" <<EOF
 #!/bin/sh
-exec python3 "$MAPPA/arnyek.py" "\$@"
+exec python3 "$MAPPA/shade.py" "\$@"
 EOF
-chmod 755 "$BIN/arnyek"
-install -m 644 "$MAPPA/arnyek.svg" "$IKONOK/arnyek.svg"
+chmod 755 "$BIN/shade"
+install -m 644 "$MAPPA/shade.svg" "$IKONOK/shade.svg"
 
-cat > "$APPS/arnyek.desktop" <<EOF
+cat > "$APPS/shade.desktop" <<EOF
 [Desktop Entry]
-Name=Árnyék
+Name=Shade
 GenericName=Privát böngésző
 Comment=Lapokra bontott, eldobható identitások, Tor mód
-Exec=$BIN/arnyek %U
-Icon=arnyek
+Exec=$BIN/shade %U
+Icon=shade
 Type=Application
 Terminal=false
-StartupWMClass=arnyek
+StartupWMClass=shade
 Categories=Network;WebBrowser;
 MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
 Keywords=web;böngésző;privát;tor;
 Actions=tor;rendszerdns;
 
 [Desktop Action tor]
-Name=Árnyék Tor módban
-Exec=$BIN/arnyek --tor
+Name=Shade Tor módban
+Exec=$BIN/shade --tor
 
 [Desktop Action rendszerdns]
-Name=Árnyék rendszer-DNS-sel
-Exec=$BIN/arnyek --rendszer-dns
+Name=Shade rendszer-DNS-sel
+Exec=$BIN/shade --rendszer-dns
 EOF
 update-desktop-database "$APPS" 2>/dev/null || true
 gtk-update-icon-cache -q "${IKONOK%/scalable/apps}" 2>/dev/null || true
 
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "Figyelem: $BIN nincs a PATH-ban" ;; esac
-echo "Az Árnyék telepítve: $BIN/arnyek és az alkalmazásmenü."
-echo "Alapértelmezett böngészőnek: xdg-settings set default-web-browser arnyek.desktop"
+echo "A Shade telepítve: $BIN/shade és az alkalmazásmenü."
+echo "Alapértelmezett böngészőnek: xdg-settings set default-web-browser shade.desktop"

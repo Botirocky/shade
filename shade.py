@@ -21,20 +21,23 @@ import konyvjelzo
 import szuro
 
 MAPPA = Path(__file__).resolve().parent
-CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "arnyek"
-ADAT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "arnyek"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "shade"
+ADAT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "shade"
+for _uj in (CACHE, ADAT):
+    if not _uj.exists() and _uj.with_name("arnyek").is_dir():
+        _uj.with_name("arnyek").rename(_uj)
 HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 EASYLIST_URL = "https://easylist.to/easylist/easylist.txt"
 HUFILTER_URL = "https://raw.githubusercontent.com/hufilter/hufilter/gh-pages/hufilter.txt"
-KERESO = os.environ.get("ARNYEK_KERESO", "https://duckduckgo.com/?q={}")
-DOH = os.environ.get("ARNYEK_DOH", "https://dns.mullvad.net/dns-query")
+KERESO = os.environ.get("SHADE_KERESO", "https://duckduckgo.com/?q={}")
+DOH = os.environ.get("SHADE_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
 TOR = "--tor" in ARGS
 RENDSZER_DNS = "--rendszer-dns" in ARGS
-PIPER = os.environ.get("ARNYEK_PIPER", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/.venv/bin/piper"))
-PIPER_HANG = os.environ.get("ARNYEK_HANG", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/hangok/hu_HU-anna-medium.onnx"))
+PIPER = os.environ.get("SHADE_PIPER", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/.venv/bin/piper"))
+PIPER_HANG = os.environ.get("SHADE_HANG", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/hangok/hu_HU-anna-medium.onnx"))
 SZINTEK = ["Normál", "Szigorúbb", "Legszigorúbb"]
-HELYI_ZONAK = os.environ.get("ARNYEK_HELYI", "nagy.park.lan park.lan").split()
+HELYI_ZONAK = os.environ.get("SHADE_HELYI", "nagy.park.lan park.lan").split()
 ENGEDETT: set[str] = set()
 if TOR:
     os.environ["TZ"] = "UTC"
@@ -226,7 +229,7 @@ class Blokklista(QThread):
         f = CACHE / nev
         if not TOR and (not f.exists() or time.time() - f.stat().st_mtime > 7 * 86400):
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "arnyek"})
+                req = urllib.request.Request(url, headers={"User-Agent": "shade"})
                 adat = urllib.request.urlopen(req, timeout=20).read().decode(errors="ignore")
                 if jo(adat):
                     CACHE.mkdir(parents=True, exist_ok=True)
@@ -296,23 +299,23 @@ class Identitas:
         ]:
             s.setAttribute(attr, ertek)
         js = QWebEngineScript()
-        js.setName("arnyek")
+        js.setName("shade")
         js.setSourceCode((MAPPA / "ujjlenyomat.js").read_text().replace("__MAG__", self.mag))
         js.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         js.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         js.setRunsOnSubFrames(True)
         p.scripts().insert(js)
         p.downloadRequested.connect(ablak.letoltes)
-        p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Árnyék", "--", n.title(), n.message()]))
+        p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Shade", "--", n.title(), n.message()]))
         self.kozmetika(ablak.blokk.css)
 
     def kozmetika(self, css: str):
-        for regi in self.profil.scripts().find("arnyek-kozmetika"):
+        for regi in self.profil.scripts().find("shade-kozmetika"):
             self.profil.scripts().remove(regi)
         if not css:
             return
         js = QWebEngineScript()
-        js.setName("arnyek-kozmetika")
+        js.setName("shade-kozmetika")
         js.setSourceCode(
             f"(()=>{{if({json.dumps(sorted(ENGEDETT))}.includes(location.hostname))return;"
             + css_js(css) + "})()"
@@ -601,7 +604,7 @@ class ParancsSor(QWidget):
 class Ablak(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Árnyék")
+        self.setWindowTitle("Shade")
         self.resize(1360, 860)
         self.munkamenet = Counter()
         self.blokk = Blokklista()
@@ -628,7 +631,7 @@ class Ablak(QMainWindow):
         fej.setFixedHeight(48)
         fh = QHBoxLayout(fej)
         fh.setContentsMargins(8, 0, 8, 0)
-        fh.addWidget(QLabel("Árnyék", objectName="marka"))
+        fh.addWidget(QLabel("Shade", objectName="marka"))
         fh.addStretch()
         self.mod = QLabel(objectName="mod")
         fh.addWidget(self.mod)
@@ -989,7 +992,7 @@ class Ablak(QMainWindow):
             jelolt = self.szef.nyitva() and any(k["url"] == lap.url().toString() for k in self.szef.lista)
             self.csillag.setIcon(ikon("csillag", SZIN["lampa"], kitolt=True) if jelolt else ikon("csillag"))
             self.csillag.setVisible(not ures)
-            self.setWindowTitle(("Árnyék" if ures else f"{lap.title()} · Árnyék"))
+            self.setWindowTitle(("Shade" if ures else f"{lap.title()} · Shade"))
 
     def megnyit(self):
         s = self.cim.text().strip()
@@ -1021,7 +1024,7 @@ class Ablak(QMainWindow):
             return
         uj = [a for a in ARGS if a != "--tor"] + ([] if TOR else ["--tor"])
         self.leallit()
-        os.execv(sys.executable, [sys.executable, str(MAPPA / "arnyek.py")] + uj)
+        os.execv(sys.executable, [sys.executable, str(MAPPA / "shade.py")] + uj)
 
     def kiurit(self):
         if self.osztott:
@@ -1296,7 +1299,7 @@ class Ablak(QMainWindow):
             self.felolvaso = []
             return
         if not (Path(PIPER).exists() and Path(PIPER_HANG).exists()):
-            QMessageBox.information(self, "Felolvasás", f"Nincs meg a Piper vagy a hang.\nARNYEK_PIPER={PIPER}\nARNYEK_HANG={PIPER_HANG}")
+            QMessageBox.information(self, "Felolvasás", f"Nincs meg a Piper vagy a hang.\nSHADE_PIPER={PIPER}\nSHADE_HANG={PIPER_HANG}")
             return
         js = ("(()=>{const k=String(getSelection()).trim();if(k)return k;"
               "const e=document.querySelector('article,main,[role=main]')||document.body;return e.innerText})()")
@@ -1358,7 +1361,7 @@ class Ablak(QMainWindow):
             if not any(x["allapot"] == "fut" for x in self.letoltesek):
                 for w in self.letoltes_sor:
                     w.hide()
-            subprocess.Popen(["notify-send", "-a", "Árnyék", "--", "Letöltve" if ok else "A letöltés megszakadt", t["nev"]])
+            subprocess.Popen(["notify-send", "-a", "Shade", "--", "Letöltve" if ok else "A letöltés megszakadt", t["nev"]])
 
         d.receivedBytesChanged.connect(halad)
         d.isFinishedChanged.connect(vege)
@@ -1470,9 +1473,9 @@ def main():
         m.serverTemplates = [DOH]
         QWebEngineGlobalSettings.setDnsMode(m)
     app = QApplication([sys.argv[0], "--webEngineArgs"] + chromium_flagek())
-    app.setApplicationName("Árnyék")
-    app.setDesktopFileName("arnyek")
-    app.setWindowIcon(QIcon(str(MAPPA / "arnyek.svg")))
+    app.setApplicationName("Shade")
+    app.setDesktopFileName("shade")
+    app.setWindowIcon(QIcon(str(MAPPA / "shade.svg")))
     app.setStyle("Fusion")
     app.setPalette(paletta())
     app.setStyleSheet(STILUS)

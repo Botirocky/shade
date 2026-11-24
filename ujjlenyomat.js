@@ -56,9 +56,9 @@
   if (window.AudioBuffer) {
     rejt(AudioBuffer.prototype, "getChannelData", (eredeti) => function (...a) {
       const d = eredeti.apply(this, a);
-      if (!d.__arnyek) {
+      if (!d.__shade) {
         for (let i = 0; i < d.length; i += 97) d[i] += (rnd(i) - 0.5) * 1e-7;
-        try { Object.defineProperty(d, "__arnyek", { value: true }); } catch (e) {}
+        try { Object.defineProperty(d, "__shade", { value: true }); } catch (e) {}
       }
       return d;
     });
