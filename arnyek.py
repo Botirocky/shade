@@ -152,7 +152,7 @@ from PySide6.QtWebEngineCore import (
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QApplication, QCompleter, QDialog, QMenu, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QStackedWidget, QToolButton, QToolTip,
+    QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter, QStackedWidget, QToolButton, QToolTip,
     QVBoxLayout, QWidget,
 )
 
@@ -475,6 +475,7 @@ QListWidget::item:hover:!selected {{ background: {SZIN['felulet']}; }}
 #kieg {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 4px; font-family: 'JetBrains Mono'; font-size: 12px; }}
 #kieg::item {{ height: 28px; padding: 0 8px; border-radius: 6px; color: {SZIN['masod']}; }}
 #kieg::item:selected {{ background: rgba(237,237,237,0.06); color: {SZIN['szoveg']}; }}
+QSplitter::handle {{ background: {SZIN['vonal']}; }}
 #eszkozsor {{ background: {SZIN['hatter']}; border-bottom: 1px solid {SZIN['vonal']}; }}
 QLineEdit {{ background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 0 8px; selection-background-color: {SZIN['kijeloles']}; }}
 QLineEdit:focus {{ background: {SZIN['emelt']}; border: 1px solid rgba(237,237,237,0.20); }}
@@ -721,7 +722,28 @@ class Ablak(QMainWindow):
         self.tolto.setFixedHeight(2)
         jv.addWidget(self.tolto)
         self.verem = QStackedWidget()
-        jv.addWidget(self.verem, 1)
+        self.osztott: Lap | None = None
+        self.osztott_fokusz = False
+        self.osztas = QSplitter(Qt.Horizontal)
+        self.osztas.setChildrenCollapsible(False)
+        self.osztas.setHandleWidth(1)
+        self.panelek = []
+        for i in range(2):
+            p = QWidget()
+            pv = QVBoxLayout(p)
+            pv.setContentsMargins(0, 0, 0, 0)
+            pv.setSpacing(0)
+            csik = QFrame()
+            csik.setFixedHeight(2)
+            csik.hide()
+            pv.addWidget(csik)
+            if i == 0:
+                pv.addWidget(self.verem, 1)
+            self.panelek.append((p, pv, csik))
+            self.osztas.addWidget(p)
+        self.panelek[1][0].hide()
+        jv.addWidget(self.osztas, 1)
+        QApplication.instance().focusChanged.connect(self.fokusz_valt)
 
         fo.addWidget(self.oldalsav)
         fo.addWidget(jobb, 1)
@@ -733,6 +755,7 @@ class Ablak(QMainWindow):
             ("Ctrl+Shift+T", self.visszanyit),
             ("Ctrl+D", self.kj_hozzaad),
             ("Ctrl+K", self.parancssor),
+            ("Ctrl+\\", lambda: self.osztott_valt()),
             ("Ctrl+U", lambda: self.uj_lap(self.akt().identitas, url="view-source:" + self.akt().url().toString())),
             ("Ctrl+Shift+C", self.link_masol),
             ("Ctrl+Shift+S", self.kepernyokep),
@@ -782,7 +805,60 @@ class Ablak(QMainWindow):
                     lap.page().runJavaScript(css_js(self.blokk.css), QWebEngineScript.ScriptWorldId.ApplicationWorld)
 
     def akt(self) -> Lap:
-        return self.verem.currentWidget()
+        return self.osztott if self.osztott and self.osztott_fokusz else self.verem.currentWidget()
+
+    def osztott_valt(self, lap=None):
+        if self.osztott:
+            regi = self.osztott
+            self.osztott_ki()
+            if lap is None or lap is regi:
+                return
+        bal = self.verem.currentWidget()
+        if lap is None or lap is bal:
+            tobbi = [l for l in self.lapok if l is not bal]
+            lap = max(tobbi, key=lambda l: l.utoljara) if tobbi else self.uj_lap(bal.identitas, hatterben=True)
+        self.verem.removeWidget(lap)
+        p, pv, _ = self.panelek[1]
+        pv.addWidget(lap, 1)
+        lap.show()
+        p.show()
+        self.osztott = lap
+        self.osztas.setSizes([10_000, 10_000])
+        if lap.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
+            lap.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        if lap.url().toString() in ("about:blank", ""):
+            lap.uj_lap_oldal()
+        self.fokusz_beallit(True)
+        lap.setFocus()
+
+    def osztott_ki(self):
+        lap, self.osztott = self.osztott, None
+        self.panelek[1][0].hide()
+        if lap in self.lapok:
+            self.verem.addWidget(lap)
+            self.lap_frissult(lap)
+        self.fokusz_beallit(False)
+
+    def fokusz_beallit(self, jobb: bool):
+        self.osztott_fokusz = jobb and self.osztott is not None
+        for i, (_, _, csik) in enumerate(self.panelek):
+            csik.setVisible(self.osztott is not None)
+            csik.setStyleSheet(f"background:{SZIN['lampa'] if (i == 1) == self.osztott_fokusz else 'transparent'};")
+        lap = self.akt()
+        if lap in self.lapok:
+            self.lista.blockSignals(True)
+            self.lista.setCurrentRow(self.lapok.index(lap))
+            self.lista.blockSignals(False)
+            self.lap_frissult(lap)
+
+    def fokusz_valt(self, _, uj):
+        if not self.osztott or uj is None:
+            return
+        w = uj
+        while w is not None and w not in (self.panelek[0][0], self.panelek[1][0]):
+            w = w.parentWidget()
+        if w is not None and (w is self.panelek[1][0]) != self.osztott_fokusz:
+            self.fokusz_beallit(w is self.panelek[1][0])
 
     def uj_lap(self, identitas=None, hatterben=False, url=None):
         lap = Lap(self, identitas or Identitas(self))
@@ -813,7 +889,12 @@ class Ablak(QMainWindow):
         if lap.url().toString() not in ("about:blank", ""):
             self.bezartak = (self.bezartak + [(lap.url().toString(), lap.identitas)])[-20:]
         self.lista.takeItem(i)
-        self.verem.removeWidget(lap)
+        if lap is self.osztott:
+            self.osztott = None
+            self.panelek[1][0].hide()
+            self.fokusz_beallit(False)
+        else:
+            self.verem.removeWidget(lap)
         idt = lap.identitas
         idt.lapok -= 1
         lap.page().deleteLater()
@@ -829,11 +910,14 @@ class Ablak(QMainWindow):
             lap.utoljara = time.monotonic()
             if lap.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
                 lap.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
-            self.verem.setCurrentWidget(lap)
+            if lap is self.osztott:
+                lap.setFocus()
+            else:
+                self.verem.setCurrentWidget(lap)
             if lap.url().toString() in ("about:blank", ""):
                 lap.uj_lap_oldal()
             self.cim.clearFocus()
-            self.lap_frissult(lap)
+            self.fokusz_beallit(lap is self.osztott)
 
     def lap_frissult(self, lap):
         if lap not in self.lapok:
@@ -843,7 +927,7 @@ class Ablak(QMainWindow):
         ures = lap.url().toString() in ("about:blank", "")
         if sor:
             pg = lap.page()
-            hang = "néma" if pg.isAudioMuted() else ("hang" if pg.recentlyAudible() else ("alszik" if pg.lifecycleState() != QWebEnginePage.LifecycleState.Active else ""))
+            hang = "osztva" if lap is self.osztott else "néma" if pg.isAudioMuted() else ("hang" if pg.recentlyAudible() else ("alszik" if pg.lifecycleState() != QWebEnginePage.LifecycleState.Active else ""))
             sor.beallit("Új lap" if ures else lap.title(), sum(lap.blokkolva.values()), hang)
         if lap is self.akt():
             if not self.cim.hasFocus():
@@ -893,6 +977,8 @@ class Ablak(QMainWindow):
         os.execv(sys.executable, [sys.executable, str(MAPPA / "arnyek.py")] + uj)
 
     def kiurit(self):
+        if self.osztott:
+            self.osztott_ki()
         for _ in range(len(self.lapok)):
             lap = self.lapok.pop()
             self.lista.takeItem(len(self.lapok))
@@ -953,6 +1039,7 @@ class Ablak(QMainWindow):
         m.addAction("Újra új identitásban", lambda: self.uj_lap(url=lap.url().toString()))
         m.addAction("Lap ugyanebben az identitásban", lambda: self.uj_lap(lap.identitas))
         m.addAction("Duplikálás", lambda: self.uj_lap(lap.identitas, url=lap.url().toString()))
+        m.addAction("Osztott nézet bezárása" if lap is self.osztott else "Megnyitás osztott nézetben", lambda: self.osztott_valt(lap))
         m.addSeparator()
         m.addAction("Bezárás", lambda: self.bezar(self.lapok.index(lap)))
         m.addAction("Többi bezárása", lambda: [self.bezar(self.lapok.index(x)) for x in list(self.lapok) if x is not lap])
@@ -969,6 +1056,7 @@ class Ablak(QMainWindow):
             ("Könyvjelző be/ki", self.kj_hozzaad),
             ("Könyvjelzők feloldása" if not self.szef.nyitva() else "Könyvjelzők lezárása",
              lambda: (self.kj_felold() if not self.szef.nyitva() else self.szef.zar(), self.kj_frissit())),
+            ("Osztott nézet be/ki", lambda: self.osztott_valt()),
             ("Olvasó mód", self.olvaso),
             ("Keresés az oldalon", self.keres),
             ("Mentés PDF-be", self.pdf),
@@ -1227,7 +1315,7 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 </div>
 <div class="blokk"><div><div class="szam">{osszes}</div><div class="al">blokkolt kérés ebben a munkamenetben, {len(self.munkamenet)} követőtől</div></div>
 <ul>{sorok}</ul></div>
-<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> bezárt lap vissza</span><span><kbd>Ctrl</kbd><kbd>D</kbd> könyvjelző</span><span><kbd>Ctrl</kbd><kbd>K</kbd> parancsok</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
+<footer><span><kbd>Ctrl</kbd><kbd>T</kbd> új identitás</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>N</kbd> lap ugyanebben</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd> bezárt lap vissza</span><span><kbd>Ctrl</kbd><kbd>D</kbd> könyvjelző</span><span><kbd>Ctrl</kbd><kbd>K</kbd> parancsok</span><span><kbd>Ctrl</kbd><kbd>\\</kbd> osztott nézet</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Del</kbd> kiürítés</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd> olvasó</span><span><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>O</kbd> Tor</span></footer>
 </main></body></html>"""
 
     def leallit(self):

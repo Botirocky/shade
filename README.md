@@ -36,6 +36,7 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 | Ctrl Shift T | bezárt lap visszanyitása |
 | Ctrl D | könyvjelző be/ki (csillag a címsorban) |
 | Ctrl K | parancssor: lapok, könyvjelzők, parancsok egy helyen |
+| Ctrl \\ | osztott nézet be/ki (két lap egymás mellett; lap-menü: „Megnyitás osztott nézetben”) |
 | Ctrl U | oldal forrása |
 | Ctrl Shift C | link másolása |
 | Ctrl Shift S | képernyőkép a látható részről |
