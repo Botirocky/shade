@@ -13,7 +13,10 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - WebRTC: a helyi cím rejtve, hívás működik; Tor módban teljesen ki
 - Tor mód: saját tor-folyamatot indít (9350), ha nincs futó; időzóna UTC; ellenőrizve: check.torproject.org → IsTor true
 - Pajzs-menü: blokkolt tartományok, blokkolás ki ezen az oldalon, JavaScript ki/be identitásonként, sütik törlése
-- Olvasó mód (Ctrl Shift R), lap-menü (jobb klikk): némítás, újranyitás új identitásban, többi bezárása
+- Olvasó mód (Ctrl Shift R), lap-menü (jobb klikk): némítás, duplikálás, újranyitás új identitásban, többi bezárása
+- Titkosított könyvjelzők: jelszóból scrypt-kulcs, AES-GCM, `~/.local/share/arnyek/konyvjelzok.bin` (0600); jelszó nélkül a fájlból semmi nem olvasható ki
+- Címsor-kiegészítés a könyvjelzőkből és a nyitott lapokból
+- Alvó lapok: a 10 percig háttérben álló, néma lap lefagy, kattintásra felébred
 - Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
 
 ## Indítás
@@ -28,9 +31,15 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 | | |
 |---|---|
 | Ctrl T | új lap új identitással |
-| Ctrl Shift T | új lap ugyanebben az identitásban |
+| Ctrl Shift N | új lap ugyanebben az identitásban |
+| Ctrl Shift T | bezárt lap visszanyitása |
+| Ctrl D | könyvjelző be/ki (csillag a címsorban) |
+| Ctrl U | oldal forrása |
+| Ctrl Shift C | link másolása |
+| Ctrl Shift S | képernyőkép a látható részről |
+| Ctrl + / − / 0 | nagyítás, oldalanként megjegyezve (csak memóriában) |
 | Ctrl W / középső klikk | lap bezárása |
-| Ctrl Shift Del | kiürítés: minden lap, identitás és a vágólap törlése |
+| Ctrl Shift Del | kiürítés: minden lap, identitás, bezárt lap, nagyítás és a vágólap törlése, könyvjelzők lezárása |
 | Ctrl Shift O | Tor mód be/ki (újraindul) |
 | Ctrl Shift R | olvasó mód |
 | Ctrl M | némítás |
