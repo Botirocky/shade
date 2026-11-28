@@ -6,6 +6,8 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 - Követő- és reklámblokkolás (StevenBlack hosts, hetente frissül, `~/.cache/shade/hosts.txt`)
 - Kozmetikus reklámszűrés: EasyList + hufilter (magyar oldalak) `##` szabályai, `#@#` kivételekkel (`~/.cache/shade/`, hetente frissül)
 - DRM (Netflix stb.): a Widevine-t első induláskor `~/.local/share/shade/WidevineCdm`-be másolja Chrome/Chromium/Playwright mellől
+- Süti-bannerek elrejtése (Fanboy Cookie Monster lista, `~/.cache/shade/suti.txt`)
+- Link célja a lap alján, ha fölé viszed az egeret
 - Követő URL-paraméterek levágása (utm_*, fbclid, gclid…), http → https emelés visszaeséssel
 - Harmadik féltől jövő sütik tiltva, `Sec-GPC: 1`
 - Vászon-, hang- és WebGL-ujjlenyomat zajosítva identitásonként
@@ -53,6 +55,7 @@ Feltelepíti a hiányzó csomagokat (Archon pacmannal: pyside6, qt6-webengine, p
 | Ctrl Shift C | link másolása |
 | Ctrl Shift S | képernyőkép a látható részről |
 | Ctrl + / − / 0 | nagyítás, oldalanként megjegyezve (csak memóriában) |
+| Ctrl 1–8 / Ctrl 9 | ugrás az n. / utolsó lapra |
 | Ctrl W / középső klikk | lap bezárása |
 | Ctrl Shift Del | kiürítés: minden lap, identitás, bezárt lap, nagyítás és a vágólap törlése, könyvjelzők lezárása |
 | Ctrl Shift O | Tor mód be/ki (újraindul) |

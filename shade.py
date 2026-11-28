@@ -29,6 +29,7 @@ for _uj in (CACHE, ADAT):
 HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 EASYLIST_URL = "https://easylist.to/easylist/easylist.txt"
 HUFILTER_URL = "https://raw.githubusercontent.com/hufilter/hufilter/gh-pages/hufilter.txt"
+SUTI_URL = "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"
 KERESO = os.environ.get("SHADE_KERESO", "https://duckduckgo.com/?q={}")
 DOH = os.environ.get("SHADE_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
@@ -217,9 +218,10 @@ class Blokklista(QThread):
                 self.betoltve.emit(len(self.lista))
             adat = self.friss("easylist.txt", EASYLIST_URL, lambda a: a.count("##") > 1000)
             hu = self.friss("hufilter.txt", HUFILTER_URL, lambda a: a.count("##") > 100)
+            suti = self.friss("suti.txt", SUTI_URL, lambda a: a.count("##") > 1000)
             self.lista = self.lista | szuro.abp_tartomanyok(hu)
-            if adat or hu:
-                altalanos, self.oldal, self.kivetel = szuro.kozmetikus_beolvas(adat + "\n" + hu)
+            if adat or hu or suti:
+                altalanos, self.oldal, self.kivetel = szuro.kozmetikus_beolvas(adat + "\n" + hu + "\n" + suti)
                 self.css = szuro.kozmetikus_css(altalanos)
         except Exception:
             pass
@@ -404,6 +406,7 @@ class Lap(QWebEngineView):
         self.urlChanged.connect(self.uj_cim)
         pg.recentlyAudibleChanged.connect(lambda _: ablak.lap_frissult(self))
         pg.audioMutedChanged.connect(lambda _: ablak.lap_frissult(self))
+        pg.linkHovered.connect(lambda u: ablak.link_mutat(self, u))
 
     def uj_cim(self, u):
         if u.host() != self.host:
@@ -488,6 +491,7 @@ QMainWindow, #jobb {{ background: {SZIN['hatter']}; }}
 #allapotnev {{ color: {SZIN['masod']}; }}
 #allapotertek, #szam {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['halk']}; }}
 #lapcim {{ color: {SZIN['masod']}; }}
+#linkcimke {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-top-right-radius: 6px; padding: 3px 8px; }}
 QListWidget {{ background: transparent; border: none; outline: none; }}
 QListWidget::item {{ height: 36px; margin: 0 0 2px 0; border-radius: 8px; border: 1px solid transparent; }}
 QListWidget::item:selected {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
@@ -790,6 +794,9 @@ class Ablak(QMainWindow):
             self.osztas.addWidget(p)
         self.panelek[1][0].hide()
         jv.addWidget(self.osztas, 1)
+        self.linkcimke = QLabel(self, objectName="linkcimke")
+        self.linkcimke.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.linkcimke.hide()
         QApplication.instance().focusChanged.connect(self.fokusz_valt)
 
         fo.addWidget(self.oldalsav)
@@ -823,6 +830,8 @@ class Ablak(QMainWindow):
             ("Escape", lambda: self.keres_zar() if self.keresosav.isVisible() else (self.akt().page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen) if self.isFullScreen() else None)),
             ("Ctrl+Shift+L", self.uj_aramkor),
             ("Ctrl+Shift+U", self.felolvas),
+            *[(f"Ctrl+{n}", lambda n=n: self.lista.setCurrentRow(min(n, self.lista.count()) - 1)) for n in range(1, 9)],
+            ("Ctrl+9", lambda: self.lista.setCurrentRow(self.lista.count() - 1)),
         ]:
             QShortcut(QKeySequence(kulcs), self, fv)
 
@@ -993,6 +1002,17 @@ class Ablak(QMainWindow):
             self.csillag.setIcon(ikon("csillag", SZIN["lampa"], kitolt=True) if jelolt else ikon("csillag"))
             self.csillag.setVisible(not ures)
             self.setWindowTitle(("Shade" if ures else f"{lap.title()} · Shade"))
+
+    def link_mutat(self, lap, u):
+        if not u or not lap.isVisible():
+            self.linkcimke.hide()
+            return
+        hely = lap.mapTo(self, lap.rect().bottomLeft())
+        self.linkcimke.setText(self.linkcimke.fontMetrics().elidedText(u, Qt.ElideMiddle, max(200, lap.width() // 2)))
+        self.linkcimke.adjustSize()
+        self.linkcimke.move(hely.x(), hely.y() - self.linkcimke.height() + 1)
+        self.linkcimke.raise_()
+        self.linkcimke.show()
 
     def megnyit(self):
         s = self.cim.text().strip()
