@@ -1,68 +1,72 @@
 # Shade
 
-Privát asztali böngésző WebKit-motorral (GTK4 + WebKitGTK 6), Chromium nélkül.
+A private desktop browser on the WebKit engine (GTK4 + WebKitGTK 6), without Chromium.
 
-- Minden lap külön, memóriában élő identitás: saját sütik, saját ujjlenyomat-mag, bezáráskor eltűnik
-- Követő- és reklámblokkolás (StevenBlack hosts, hetente frissül, `~/.cache/shade/hosts.txt`): a WebKit webfolyamatában futó saját C-kiterjesztés (`blokkolo.c`) végzi, első induláskor magától lefordul
-- Kozmetikus reklámszűrés: EasyList + hufilter (magyar oldalak) `##` szabályai, `#@#` kivételekkel (`~/.cache/shade/`, hetente frissül)
-- DRM-es oldalak (Netflix stb.) nem mennek: a WebKitGTK-hoz nincs Widevine
-- Süti-bannerek elrejtése (Fanboy Cookie Monster lista, `~/.cache/shade/suti.txt`)
-- Link célja a lap alján, ha fölé viszed az egeret
-- Követő URL-paraméterek levágása (utm_*, fbclid, gclid…), http → https emelés visszaeséssel
-- Harmadik féltől jövő sütik tiltva, intelligens követésgátlás (ITP), `Sec-GPC: 1` minden kérésben
-- Vászon-, hang- és WebGL-ujjlenyomat zajosítva identitásonként
-- DNS: a rendszeré (a WebKitGTK-ban nincs DoH), így a `*.park.lan` címek is mennek; Tor módban a névfeloldás is a Toron megy, `.onion` címek is nyílnak
-- WebRTC: a helyi cím csak kamera/mikrofon-engedély után látszik; Tor módban teljesen ki
-- Tor mód: saját tor-folyamatot indít (9350), ha nincs futó; időzóna UTC; ellenőrizve: check.torproject.org → IsTor true
-- Pajzs-menü: blokkolt tartományok, blokkolás ki ezen az oldalon, JavaScript ki/be identitásonként, sütik törlése
-- Olvasó mód (Ctrl Shift R), lap-menü (jobb klikk): némítás, duplikálás, újranyitás új identitásban, többi bezárása
-- Titkosított könyvjelzők: jelszóból scrypt-kulcs, AES-GCM, `~/.local/share/shade/konyvjelzok.bin` (0600); jelszó nélkül a fájlból semmi nem olvasható ki
-- Címsor-kiegészítés a könyvjelzőkből és a nyitott lapokból
-- Alvó lapok: a 10 percig háttérben álló, néma lap webfolyamata leáll, kattintásra újratölt
-- Kulcsszavas keresés a címsorban: `w` (magyar Wikipédia), `wen`, `yt`, `gh`, `osm`, `arch`, `aur`, `mdn`, `pypi`, `sp` (Startpage), `ddg`, pl. `w Budapest ostroma`
-- Biztonsági szint a pajzs-menüben (Tor Browser mintára): Normál, Szigorúbb (WebGL ki, titkosítatlan http-n JavaScript ki), Legszigorúbb (JavaScript és WebGL mindenhol ki)
-- Sötét mód kényszerítése minden oldalra (pajzs-menü vagy Ctrl K)
-- Felolvasás: a Piper és a hang helye `SHADE_PIPER` és `SHADE_HANG` változóval állítható; semmi nem megy ki a gépről
-- Letöltések gomb az eszközsoron (a munkamenet letöltései, megnyitás, mappa)
-- Videó, PDF, teljes képernyő, letöltés, kamera/mikrofon engedélykéréssel, képernyőmegosztás, fejlesztői eszközök
+## Features
 
-## Telepítés
+- Every tab is a separate identity that lives in memory: its own cookies, its own fingerprint seed, gone when the tab closes
+- Tracker and ad blocking (StevenBlack hosts, updated weekly, `~/.cache/shade/hosts.txt`), done by a small C extension (`blokkolo.c`) inside the WebKit web process; it compiles itself on first start
+- Cosmetic ad filtering: the `##` rules of EasyList + hufilter (Hungarian sites) with `#@#` exceptions (`~/.cache/shade/`, updated weekly)
+- DRM sites (Netflix and similar) do not work: there is no Widevine for WebKitGTK
+- Cookie banners hidden (Fanboy Cookie Monster list, `~/.cache/shade/suti.txt`)
+- Link target shown at the bottom when you hover a link
+- Tracking URL parameters stripped (utm_*, fbclid, gclid…), http upgraded to https with fallback
+- Third-party cookies blocked, Intelligent Tracking Prevention (ITP), `Sec-GPC: 1` on every request
+- Canvas, audio and WebGL fingerprints randomized per identity
+- DNS: the system resolver (WebKitGTK has no DoH), so local `*.park.lan` names work; in Tor mode name resolution also goes through Tor and `.onion` addresses open
+- WebRTC: the local address is only visible after a camera/microphone permission; fully off in Tor mode
+- Tor mode: starts its own tor process (port 9350) if none is running; time zone UTC; verified: check.torproject.org → IsTor true
+- Shield menu: blocked domains, disable blocking on this site, JavaScript on/off per identity, clear cookies
+- Reader mode (Ctrl Shift R); tab menu (right click): mute, duplicate, reopen in a new identity, close others
+- Encrypted bookmarks: scrypt key from a password, AES-GCM, `~/.local/share/shade/konyvjelzok.bin` (0600); nothing can be read from the file without the password
+- Address bar completion from bookmarks and open tabs
+- Sleeping tabs: the web process of a silent tab that has been in the background for 10 minutes stops, and the tab reloads when you click it
+- Keyword search in the address bar: `w` (Hungarian Wikipedia), `wen`, `yt`, `gh`, `osm`, `arch`, `aur`, `mdn`, `pypi`, `sp` (Startpage), `ddg`, for example `w Siege of Budapest`
+- Security level in the shield menu (like Tor Browser): Normal, Safer (WebGL off, JavaScript off on plain http), Safest (JavaScript and WebGL off everywhere)
+- Force dark mode on every site (shield menu or Ctrl K)
+- Read aloud: set the Piper binary and voice with `SHADE_PIPER` and `SHADE_HANG`; nothing leaves the computer
+- Downloads button on the toolbar (this session's downloads, open, show folder)
+- Video, PDF, full screen, downloads, camera/microphone with permission prompts, screen sharing, developer tools
+
+## Install
 
 ```sh
 git clone https://github.com/Botirocky/shade && cd shade && ./telepit.sh
 ```
 
-Feltelepíti a hiányzó csomagokat (Archon pacmannal: webkitgtk-6.0, gtk4, python-gobject, gcc, python-cryptography, tor, alsa-utils), létrehozza az `shade` parancsot, az ikont és a menübejegyzést (Tor mód indítással). Eltávolítás: `./telepit.sh --eltavolit`. Alapértelmezett böngésző: `xdg-settings set default-web-browser shade.desktop`.
+It installs the missing packages (on Arch with pacman: webkitgtk-6.0, gtk4, python-gobject, gcc, python-cryptography, tor, alsa-utils), and creates the `shade` command, the icon and the menu entry (with a Tor mode launcher). Uninstall: `./telepit.sh --eltavolit`. Default browser: `xdg-settings set default-web-browser shade.desktop`.
 
-## Indítás
+## Start
 
-    python shade.py [cím…] [--tor]
+    python shade.py [url…] [--tor]
 
-`SHADE_KERESO` környezeti változóval a kereső állítható.
+Set the search engine with the `SHADE_KERESO` environment variable.
 
-## Billentyűk
+## Keys
 
 | | |
 |---|---|
-| Ctrl T | új lap új identitással |
-| Ctrl Shift N | új lap ugyanebben az identitásban |
-| Ctrl Shift T | bezárt lap visszanyitása |
-| Ctrl D | könyvjelző be/ki (csillag a címsorban) |
-| Ctrl K | parancssor: lapok, könyvjelzők, parancsok egy helyen |
-| Ctrl \\ | osztott nézet be/ki (két lap egymás mellett; lap-menü: „Megnyitás osztott nézetben”) |
-| Ctrl U | oldal forrása |
-| Ctrl Shift C | link másolása |
-| Ctrl Shift S | képernyőkép a látható részről |
-| Ctrl + / − / 0 | nagyítás, oldalanként megjegyezve (csak memóriában) |
-| Ctrl 1–8 / Ctrl 9 | ugrás az n. / utolsó lapra |
-| Ctrl W / középső klikk | lap bezárása |
-| Ctrl Shift Del | kiürítés: minden lap, identitás, bezárt lap, nagyítás és a vágólap törlése, könyvjelzők lezárása |
-| Ctrl Shift O | Tor mód be/ki (újraindul) |
-| Ctrl Shift R | olvasó mód |
-| Ctrl M | némítás |
-| Ctrl F | keresősáv az oldalon, találatszámmal (Enter / Shift+Enter: következő / előző, Esc: bezár) |
-| Ctrl Shift U | felolvasás helyi Piper-hanggal (kijelölés, vagy a cikk szövege), újra: leállít |
-| Ctrl Shift L | Tor módban: új Tor-útvonal és az oldal újranyitása új identitásban |
-| Ctrl L, Ctrl P, F12 | cím, PDF, fejlesztői eszközök |
+| Ctrl T | new tab with a new identity |
+| Ctrl Shift N | new tab in the same identity |
+| Ctrl Shift T | reopen closed tab |
+| Ctrl D | bookmark on/off (star in the address bar) |
+| Ctrl K | command palette: tabs, bookmarks and commands in one place |
+| Ctrl \\ | split view on/off (two tabs side by side; tab menu: "Open in split view") |
+| Ctrl U | page source |
+| Ctrl Shift C | copy link |
+| Ctrl Shift S | screenshot of the visible area |
+| Ctrl + / − / 0 | zoom, remembered per site (in memory only) |
+| Ctrl 1–8 / Ctrl 9 | go to tab n / the last tab |
+| Ctrl W / middle click | close tab |
+| Ctrl Shift Del | wipe: all tabs, identities, closed tabs, zoom levels and the clipboard; locks the bookmarks |
+| Ctrl Shift O | Tor mode on/off (restarts) |
+| Ctrl Shift R | reader mode |
+| Ctrl M | mute |
+| Ctrl F | find in page with match count (Enter / Shift+Enter: next / previous, Esc: close) |
+| Ctrl Shift U | read aloud with a local Piper voice (selection or the article text); again: stop |
+| Ctrl Shift L | in Tor mode: new Tor circuit and reopen the page in a new identity |
+| Ctrl L, Ctrl P, F12 | address, PDF, developer tools |
 
-Teszt: `python szuro.py`
+Test: `python szuro.py`
+
+The user interface is in Hungarian.
