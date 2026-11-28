@@ -1,24 +1,24 @@
 # Shade
 
-Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
+Privát asztali böngésző WebKit-motorral (GTK4 + WebKitGTK 6), Chromium nélkül.
 
 - Minden lap külön, memóriában élő identitás: saját sütik, saját ujjlenyomat-mag, bezáráskor eltűnik
-- Követő- és reklámblokkolás (StevenBlack hosts, hetente frissül, `~/.cache/shade/hosts.txt`)
+- Követő- és reklámblokkolás (StevenBlack hosts, hetente frissül, `~/.cache/shade/hosts.txt`): a WebKit webfolyamatában futó saját C-kiterjesztés (`blokkolo.c`) végzi, első induláskor magától lefordul
 - Kozmetikus reklámszűrés: EasyList + hufilter (magyar oldalak) `##` szabályai, `#@#` kivételekkel (`~/.cache/shade/`, hetente frissül)
-- DRM (Netflix stb.): a Widevine-t első induláskor `~/.local/share/shade/WidevineCdm`-be másolja Chrome/Chromium/Playwright mellől
+- DRM-es oldalak (Netflix stb.) nem mennek: a WebKitGTK-hoz nincs Widevine
 - Süti-bannerek elrejtése (Fanboy Cookie Monster lista, `~/.cache/shade/suti.txt`)
 - Link célja a lap alján, ha fölé viszed az egeret
 - Követő URL-paraméterek levágása (utm_*, fbclid, gclid…), http → https emelés visszaeséssel
-- Harmadik féltől jövő sütik tiltva, `Sec-GPC: 1`
+- Harmadik féltől jövő sütik tiltva, intelligens követésgátlás (ITP), `Sec-GPC: 1` minden kérésben
 - Vászon-, hang- és WebGL-ujjlenyomat zajosítva identitásonként
-- Titkosított DNS (Mullvad DoH); a `*.park.lan` és `*.nagy.park.lan` indításkor a rendszer-DNS-ből kerül feloldásra (`SHADE_HELYI`)
-- WebRTC: a helyi cím rejtve, hívás működik; Tor módban teljesen ki
+- DNS: a rendszeré (a WebKitGTK-ban nincs DoH), így a `*.park.lan` címek is mennek; Tor módban a névfeloldás is a Toron megy, `.onion` címek is nyílnak
+- WebRTC: a helyi cím csak kamera/mikrofon-engedély után látszik; Tor módban teljesen ki
 - Tor mód: saját tor-folyamatot indít (9350), ha nincs futó; időzóna UTC; ellenőrizve: check.torproject.org → IsTor true
 - Pajzs-menü: blokkolt tartományok, blokkolás ki ezen az oldalon, JavaScript ki/be identitásonként, sütik törlése
 - Olvasó mód (Ctrl Shift R), lap-menü (jobb klikk): némítás, duplikálás, újranyitás új identitásban, többi bezárása
 - Titkosított könyvjelzők: jelszóból scrypt-kulcs, AES-GCM, `~/.local/share/shade/konyvjelzok.bin` (0600); jelszó nélkül a fájlból semmi nem olvasható ki
 - Címsor-kiegészítés a könyvjelzőkből és a nyitott lapokból
-- Alvó lapok: a 10 percig háttérben álló, néma lap lefagy, kattintásra felébred
+- Alvó lapok: a 10 percig háttérben álló, néma lap webfolyamata leáll, kattintásra újratölt
 - Kulcsszavas keresés a címsorban: `w` (magyar Wikipédia), `wen`, `yt`, `gh`, `osm`, `arch`, `aur`, `mdn`, `pypi`, `sp` (Startpage), `ddg`, pl. `w Budapest ostroma`
 - Biztonsági szint a pajzs-menüben (Tor Browser mintára): Normál, Szigorúbb (WebGL ki, titkosítatlan http-n JavaScript ki), Legszigorúbb (JavaScript és WebGL mindenhol ki)
 - Sötét mód kényszerítése minden oldalra (pajzs-menü vagy Ctrl K)
@@ -32,14 +32,13 @@ Privát asztali böngésző Chromium-motorral (PySide6 + Qt WebEngine).
 git clone https://github.com/Botirocky/shade && cd shade && ./telepit.sh
 ```
 
-Feltelepíti a hiányzó csomagokat (Archon pacmannal: pyside6, qt6-webengine, python-cryptography, tor, alsa-utils), létrehozza az `shade` parancsot, az ikont és a menübejegyzést (Tor mód és rendszer-DNS indítással). Eltávolítás: `./telepit.sh --eltavolit`. Alapértelmezett böngésző: `xdg-settings set default-web-browser shade.desktop`.
+Feltelepíti a hiányzó csomagokat (Archon pacmannal: webkitgtk-6.0, gtk4, python-gobject, gcc, python-cryptography, tor, alsa-utils), létrehozza az `shade` parancsot, az ikont és a menübejegyzést (Tor mód indítással). Eltávolítás: `./telepit.sh --eltavolit`. Alapértelmezett böngésző: `xdg-settings set default-web-browser shade.desktop`.
 
 ## Indítás
 
-    python shade.py [cím…] [--tor] [--rendszer-dns]
+    python shade.py [cím…] [--tor]
 
-`--rendszer-dns`: a rendszer DNS-ét használja (pl. `*.park.lan` címekhez).
-`SHADE_KERESO`, `SHADE_DOH` környezeti változóval a kereső és a DoH-szerver állítható.
+`SHADE_KERESO` környezeti változóval a kereső állítható.
 
 ## Billentyűk
 
@@ -61,7 +60,7 @@ Feltelepíti a hiányzó csomagokat (Archon pacmannal: pyside6, qt6-webengine, p
 | Ctrl Shift O | Tor mód be/ki (újraindul) |
 | Ctrl Shift R | olvasó mód |
 | Ctrl M | némítás |
-| Ctrl F | keresősáv az oldalon (Enter / Shift+Enter: következő / előző, Esc: bezár) |
+| Ctrl F | keresősáv az oldalon, találatszámmal (Enter / Shift+Enter: következő / előző, Esc: bezár) |
 | Ctrl Shift U | felolvasás helyi Piper-hanggal (kijelölés, vagy a cikk szövege), újra: leállít |
 | Ctrl Shift L | Tor módban: új Tor-útvonal és az oldal újranyitása új identitásban |
 | Ctrl L, Ctrl P, F12 | cím, PDF, fejlesztői eszközök |

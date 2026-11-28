@@ -14,7 +14,9 @@ if [[ "${1:-}" == "--eltavolit" ]]; then
 fi
 
 hiany=()
-python3 -c "import PySide6.QtWebEngineWidgets" 2>/dev/null || hiany+=(pyside6 qt6-webengine)
+python3 -c "import gi; gi.require_version('WebKit', '6.0'); gi.require_version('Gtk', '4.0')" 2>/dev/null || hiany+=(webkitgtk-6.0 gtk4 python-gobject)
+command -v cc >/dev/null || hiany+=(gcc)
+command -v pkg-config >/dev/null || hiany+=(pkgconf)
 python3 -c "import cryptography" 2>/dev/null || hiany+=(python-cryptography)
 command -v tor >/dev/null || hiany+=(tor)
 command -v aplay >/dev/null || hiany+=(alsa-utils)
@@ -50,15 +52,11 @@ StartupWMClass=shade
 Categories=Network;WebBrowser;
 MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
 Keywords=web;böngésző;privát;tor;
-Actions=tor;rendszerdns;
+Actions=tor;
 
 [Desktop Action tor]
 Name=Shade Tor módban
 Exec=$BIN/shade --tor
-
-[Desktop Action rendszerdns]
-Name=Shade rendszer-DNS-sel
-Exec=$BIN/shade --rendszer-dns
 EOF
 update-desktop-database "$APPS" 2>/dev/null || true
 gtk-update-icon-cache -q "${IKONOK%/scalable/apps}" 2>/dev/null || true

@@ -1,12 +1,10 @@
-import glob
 import html
-import math
-import random
 import json
+import math
 import os
+import random
 import re
 import secrets
-import shutil
 import socket
 import subprocess
 import sys
@@ -26,40 +24,58 @@ ADAT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "sh
 for _uj in (CACHE, ADAT):
     if not _uj.exists() and _uj.with_name("arnyek").is_dir():
         _uj.with_name("arnyek").rename(_uj)
+CACHE.mkdir(parents=True, exist_ok=True)
 HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 EASYLIST_URL = "https://easylist.to/easylist/easylist.txt"
 HUFILTER_URL = "https://raw.githubusercontent.com/hufilter/hufilter/gh-pages/hufilter.txt"
 SUTI_URL = "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt"
 KERESO = os.environ.get("SHADE_KERESO", "https://duckduckgo.com/?q={}")
-DOH = os.environ.get("SHADE_DOH", "https://dns.mullvad.net/dns-query")
 ARGS = sys.argv[1:]
 TOR = "--tor" in ARGS
-RENDSZER_DNS = "--rendszer-dns" in ARGS
 PIPER = os.environ.get("SHADE_PIPER", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/.venv/bin/piper"))
 PIPER_HANG = os.environ.get("SHADE_HANG", str(Path.home() / "Dokumentumok/projectek/hang-asszisztens/hangok/hu_HU-anna-medium.onnx"))
 SZINTEK = ["Normál", "Szigorúbb", "Legszigorúbb"]
-HELYI_ZONAK = os.environ.get("SHADE_HELYI", "nagy.park.lan park.lan").split()
+TILTOTT_F = CACHE / "tiltott.txt"
+ENGEDETT_F = CACHE / "engedett.txt"
 ENGEDETT: set[str] = set()
 if TOR:
     os.environ["TZ"] = "UTC"
+    time.tzset()
 
+import gi
 
-def helyi_szabalyok() -> list[str]:
-    talalt = {}
+gi.require_version("Gdk", "4.0")
+gi.require_version("Gtk", "4.0")
+gi.require_version("WebKit", "6.0")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Gdk, Gio, GLib, Graphene, Gtk, Pango, WebKit
 
-    def proba(z):
-        try:
-            talalt[z] = socket.getaddrinfo(z, 80, socket.AF_INET)[0][4][0]
-        except OSError:
-            pass
+SZIN = {
+    "mely": "#0f0f10", "hatter": "#141415", "felulet": "#19191b", "emelt": "#232325", "vonal": "rgba(237,237,237,0.08)",
+    "szoveg": "#ededed", "masod": "#a1a1a6", "halk": "#85858b", "lampa": "#d0583f", "kijeloles": "#a9452f",
+}
+IDENTITAS_SZINEK = ["#c9a15b", "#8fa98a", "#7f97b8", "#c07a5f", "#a68bb0", "#6fa6a0"]
 
-    szalak = [threading.Thread(target=proba, args=(z,), daemon=True) for z in HELYI_ZONAK]
-    for t in szalak:
-        t.start()
-    hatarido = time.time() + 1.5
-    for t in szalak:
-        t.join(max(0, hatarido - time.time()))
-    return [f"MAP *.{z} {talalt[z]}, MAP {z} {talalt[z]}" for z in HELYI_ZONAK if z in talalt]
+IKON = {
+    "vissza": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+    "elore": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    "frissit": '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+    "plusz": '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    "pajzs": '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+    "lakat": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    "nyitott": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+    "halo": '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+    "csillag": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+    "letoltes": '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+    "kereso": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    "fel": '<path d="m18 15-6-6-6 6"/>',
+    "le": '<path d="m6 9 6 6 6-6"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    "radir": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+}
+
+SOTET_CSS = ("html{filter:invert(.92) hue-rotate(180deg)!important;background:#fff!important}"
+             "img,video,picture,canvas,iframe,embed,object,svg image,[style*='background-image']{filter:invert(1) hue-rotate(180deg)!important}")
 
 
 def ujjlenyomat_svg(mag: str, szin: str) -> str:
@@ -113,98 +129,78 @@ def port_nyitva(port: int) -> bool:
 TOR_PORT = 9050 if (TOR and port_nyitva(9050)) else 9350
 
 
-def chromium_flagek() -> list[str]:
-    f = [
-        "--force-webrtc-ip-handling-policy=" + ("disable_non_proxied_udp" if TOR else "default_public_interface_only"),
-        "--no-pings",
-        "--disable-breakpad",
-        "--disable-domain-reliability",
-        "--disable-background-networking",
-        "--disable-features=BrowsingTopics,Fledge,InterestGroupStorage,PrivacySandboxAdsAPIs,"
-        "AttributionReportingCrossAppWeb,ConversionMeasurement,InterestFeedContentSuggestions,MediaRouter",
-    ]
-    wv = (
-        glob.glob("/usr/lib/chromium/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")
-        + glob.glob("/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")
-        + sorted(glob.glob(str(Path.home() / ".cache/ms-playwright/chromium-*/chrome-linux64/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so")))
-    )
-    sajat = ADAT / "WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so"
-    if wv and not sajat.exists():
-        try:
-            shutil.copytree(Path(wv[-1]).parents[2], ADAT / "WidevineCdm", dirs_exist_ok=True)
-        except OSError:
-            pass
-    if sajat.exists() or wv:
-        f.append(f"--widevine-path={sajat if sajat.exists() else wv[-1]}")
-    if TOR:
-        f += [
-            f"--proxy-server=socks5://127.0.0.1:{TOR_PORT}",
-            "--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1",
-            "--disable-quic",
-        ]
-    elif not RENDSZER_DNS:
-        sz = helyi_szabalyok()
-        if sz:
-            f.append("--host-resolver-rules=" + ", ".join(sz))
-    return f
-
-from PySide6.QtCore import QByteArray, QSize, QStringListModel, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QPainter, QPalette, QPixmap, QShortcut
-from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWebEngineCore import (
-    QWebEngineDownloadRequest, QWebEngineGlobalSettings, QWebEnginePage, QWebEnginePermission,
-    QWebEngineProfile, QWebEngineScript, QWebEngineSettings, QWebEngineUrlRequestInfo,
-    QWebEngineUrlRequestInterceptor,
-)
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import (
-    QApplication, QCompleter, QDialog, QMenu, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSplitter, QStackedWidget, QToolButton, QToolTip,
-    QVBoxLayout, QWidget,
-)
-
-SZIN = {
-    "mely": "#0f0f10", "hatter": "#141415", "felulet": "#19191b", "emelt": "#232325", "vonal": "rgba(237,237,237,0.08)",
-    "szoveg": "#ededed", "masod": "#a1a1a6", "halk": "#85858b", "lampa": "#d0583f", "kijeloles": "#a9452f",
-}
-IDENTITAS_SZINEK = ["#c9a15b", "#8fa98a", "#7f97b8", "#c07a5f", "#a68bb0", "#6fa6a0"]
-
-IKON = {
-    "vissza": '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
-    "elore": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
-    "frissit": '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
-    "plusz": '<path d="M5 12h14"/><path d="M12 5v14"/>',
-    "pajzs": '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
-    "lakat": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-    "nyitott": '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
-    "halo": '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
-    "csillag": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
-    "letoltes": '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
-    "kereso": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-    "fel": '<path d="m18 15-6-6-6 6"/>',
-    "le": '<path d="m6 9 6 6 6-6"/>',
-    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-    "radir": '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
-}
+def gazda(uri: str | None) -> str:
+    return (urlsplit(uri or "").hostname or "") if uri else ""
 
 
-def ikon(nev: str, szin: str = SZIN["masod"], meret: int = 16, kitolt: bool = False) -> QIcon:
-    svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="{szin if kitolt else 'none'}" stroke="{szin}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{IKON[nev]}</svg>'
-    dpr = 2
-    pm = QPixmap(meret * dpr, meret * dpr)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    QSvgRenderer(QByteArray(svg.encode())).render(p)
-    p.end()
-    pm.setDevicePixelRatio(dpr)
-    return QIcon(pm)
+def ures(uri: str | None) -> bool:
+    return uri in (None, "", "about:blank")
 
 
-class Blokklista(QThread):
-    betoltve = Signal(int)
+def kiterjesztes() -> Path | None:
+    forras = MAPPA / "blokkolo.c"
+    mappa = CACHE / "kiterjesztes"
+    so = mappa / "libshade-blokkolo.so"
+    if so.exists() and so.stat().st_mtime >= forras.stat().st_mtime:
+        return mappa
+    try:
+        mappa.mkdir(parents=True, exist_ok=True)
+        jelzok = subprocess.run(["pkg-config", "--cflags", "--libs", "webkitgtk-web-process-extension-6.0"],
+                                capture_output=True, text=True, check=True).stdout.split()
+        subprocess.run(["cc", "-shared", "-fPIC", "-O2", "-o", str(so), str(forras), *jelzok], check=True)
+        return mappa
+    except (OSError, subprocess.CalledProcessError) as h:
+        print(f"shade: a blokkoló nem fordult le, követők nem lesznek blokkolva ({h})", file=sys.stderr)
+        return None
 
-    def __init__(self):
-        super().__init__()
+
+_ikonok: dict = {}
+
+
+def textura(nev: str, szin: str = SZIN["masod"], kitolt: bool = False) -> Gdk.Texture:
+    k = (nev, szin, kitolt)
+    if k not in _ikonok:
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="{szin if kitolt else "none"}" '
+               f'stroke="{szin}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{IKON[nev]}</svg>')
+        _ikonok[k] = Gdk.Texture.new_from_bytes(GLib.Bytes.new(svg.encode()))
+    return _ikonok[k]
+
+
+def kep(nev: str, szin: str = SZIN["masod"]) -> Gtk.Image:
+    i = Gtk.Image.new_from_paintable(textura(nev, szin))
+    i.set_pixel_size(16)
+    return i
+
+
+def gomb(nev: str, fv, tipp: str = "") -> Gtk.Button:
+    b = Gtk.Button(child=kep(nev), tooltip_text=tipp or None)
+    b.add_css_class("ikongomb")
+    b.connect("clicked", lambda _: fv())
+    return b
+
+
+def szoveg_gomb(nev: str, szoveg: str, fv) -> Gtk.Button:
+    h = Gtk.Box(spacing=10)
+    h.append(kep(nev))
+    c = Gtk.Label(label=szoveg, xalign=0)
+    h.append(c)
+    b = Gtk.Button(child=h)
+    b.add_css_class("oldalgomb")
+    b.cimke = c
+    b.connect("clicked", lambda _: fv())
+    return b
+
+
+def cimke(szoveg: str, osztaly: str = "cimke", **kw) -> Gtk.Label:
+    c = Gtk.Label(label=szoveg, **{"xalign": 0, **kw})
+    c.add_css_class(osztaly)
+    return c
+
+
+class Blokklista(threading.Thread):
+    def __init__(self, kesz):
+        super().__init__(daemon=True)
+        self.kesz = kesz
         self.lista = set(szuro.ALAP_TILTOTT)
         self.css = ""
         self.oldal: dict[str, list[str]] = {}
@@ -215,7 +211,6 @@ class Blokklista(QThread):
             adat = self.friss("hosts.txt", HOSTS_URL, lambda a: len(szuro.hosts_beolvas(a)) > 1000)
             if adat:
                 self.lista = set(szuro.ALAP_TILTOTT) | szuro.hosts_beolvas(adat)
-                self.betoltve.emit(len(self.lista))
             adat = self.friss("easylist.txt", EASYLIST_URL, lambda a: a.count("##") > 1000)
             hu = self.friss("hufilter.txt", HUFILTER_URL, lambda a: a.count("##") > 100)
             suti = self.friss("suti.txt", SUTI_URL, lambda a: a.count("##") > 1000)
@@ -223,9 +218,10 @@ class Blokklista(QThread):
             if adat or hu or suti:
                 altalanos, self.oldal, self.kivetel = szuro.kozmetikus_beolvas(adat + "\n" + hu + "\n" + suti)
                 self.css = szuro.kozmetikus_css(altalanos)
-        except Exception:
-            pass
-        self.betoltve.emit(len(self.lista))
+        except Exception as h:
+            print(f"shade: tiltólista hiba: {h}", file=sys.stderr)
+        TILTOTT_F.write_text("\n".join(sorted(self.lista)) + "\n")
+        GLib.idle_add(self.kesz)
 
     def friss(self, nev, url, jo) -> str:
         f = CACHE / nev
@@ -234,23 +230,24 @@ class Blokklista(QThread):
                 req = urllib.request.Request(url, headers={"User-Agent": "shade"})
                 adat = urllib.request.urlopen(req, timeout=20).read().decode(errors="ignore")
                 if jo(adat):
-                    CACHE.mkdir(parents=True, exist_ok=True)
                     f.write_text(adat)
             except OSError:
                 pass
         return f.read_text(errors="ignore") if f.exists() else ""
 
 
-class TorIndito(QThread):
-    allapot = Signal(int)
-
-    def __init__(self):
-        super().__init__()
+class TorIndito(threading.Thread):
+    def __init__(self, jelez):
+        super().__init__(daemon=True)
+        self.jelez = jelez
         self.folyamat = None
+
+    def allapot(self, n):
+        GLib.idle_add(self.jelez, n)
 
     def run(self):
         if port_nyitva(TOR_PORT):
-            self.allapot.emit(100)
+            self.allapot(100)
             return
         adat = CACHE / "tor"
         adat.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -263,16 +260,16 @@ class TorIndito(QThread):
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
         except FileNotFoundError:
-            self.allapot.emit(-1)
+            self.allapot(-1)
             return
         utolso = 0
         for sor in self.folyamat.stdout:
             m = re.search(r"Bootstrapped (\d+)%", sor)
             if m:
                 utolso = int(m.group(1))
-                self.allapot.emit(utolso)
+                self.allapot(utolso)
         if utolso < 100:
-            self.allapot.emit(-2)
+            self.allapot(-2)
 
 
 class Identitas:
@@ -285,334 +282,248 @@ class Identitas:
         self.nev = self.mag[:4].upper()
         self.kivetelek: set[str] = set()
         self.lapok = 0
-        self.profil = QWebEngineProfile(ablak)
-        p = self.profil
-        p.setHttpAcceptLanguage("hu-HU,hu;q=0.9,en;q=0.8")
-        p.setHttpUserAgent(re.sub(r"\s*QtWebEngine/\S+", "", p.httpUserAgent()))
-        p.setPersistentPermissionsPolicy(QWebEngineProfile.PersistentPermissionsPolicy.AskEveryTime)
-        p.cookieStore().setCookieFilter(lambda k: not k.thirdParty)
-        A = QWebEngineSettings.WebAttribute
-        s = p.settings()
-        for attr, ertek in [
-            (A.PluginsEnabled, True), (A.PdfViewerEnabled, True), (A.FullScreenSupportEnabled, True),
-            (A.ScreenCaptureEnabled, True), (A.DnsPrefetchEnabled, False), (A.HyperlinkAuditingEnabled, False),
-            (A.WebRTCPublicInterfacesOnly, True), (A.LocalContentCanAccessRemoteUrls, False),
-            (A.JavascriptCanOpenWindows, False), (A.PlaybackRequiresUserGesture, True),
-        ]:
-            s.setAttribute(attr, ertek)
-        js = QWebEngineScript()
-        js.setName("shade")
-        js.setSourceCode((MAPPA / "ujjlenyomat.js").read_text().replace("__MAG__", self.mag))
-        js.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        js.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        js.setRunsOnSubFrames(True)
-        p.scripts().insert(js)
-        p.downloadRequested.connect(ablak.letoltes)
-        p.setNotificationPresenter(lambda n: subprocess.Popen(["notify-send", "-a", "Shade", "--", n.title(), n.message()]))
-        self.kozmetika(ablak.blokk.css)
+        self.js = True
+        self.munkamenet = WebKit.NetworkSession.new_ephemeral()
+        m = self.munkamenet
+        m.set_itp_enabled(True)
+        m.get_cookie_manager().set_accept_policy(WebKit.CookieAcceptPolicy.NO_THIRD_PARTY)
+        if TOR:
+            m.set_proxy_settings(WebKit.NetworkProxyMode.CUSTOM, WebKit.NetworkProxySettings.new(f"socks5://127.0.0.1:{TOR_PORT}", None))
+        m.connect("download-started", ablak.letoltes)
+        self.tartalom = WebKit.UserContentManager()
+        self.tartalom.add_script(WebKit.UserScript.new(
+            (MAPPA / "ujjlenyomat.js").read_text().replace("__MAG__", self.mag),
+            WebKit.UserContentInjectedFrames.ALL_FRAMES, WebKit.UserScriptInjectionTime.START, None, None))
+        self.kozmetika(ablak)
 
-    def kozmetika(self, css: str):
-        for regi in self.profil.scripts().find("shade-kozmetika"):
-            self.profil.scripts().remove(regi)
-        if not css:
-            return
-        js = QWebEngineScript()
-        js.setName("shade-kozmetika")
-        js.setSourceCode(
-            f"(()=>{{if({json.dumps(sorted(ENGEDETT))}.includes(location.hostname))return;"
-            + css_js(css) + "})()"
-        )
-        js.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        js.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
-        self.profil.scripts().insert(js)
+    def kozmetika(self, ablak):
+        t = self.tartalom
+        t.remove_all_style_sheets()
+        if ablak.blokk.css:
+            t.add_style_sheet(WebKit.UserStyleSheet.new(
+                ablak.blokk.css, WebKit.UserContentInjectedFrames.ALL_FRAMES, WebKit.UserStyleLevel.USER,
+                None, [f"*://{h}/*" for h in sorted(ENGEDETT)] or None))
+        if ablak.sotet:
+            t.add_style_sheet(WebKit.UserStyleSheet.new(
+                SOTET_CSS, WebKit.UserContentInjectedFrames.TOP_FRAME, WebKit.UserStyleLevel.USER, None, None))
 
 
-class Elfogo(QWebEngineUrlRequestInterceptor):
-    blokkolt = Signal(str)
-
-    def __init__(self, lap):
-        super().__init__(lap)
-        self.kivetelek = lap.identitas.kivetelek
-        self.lista = lap.ablak.blokk
-        self.felhuzott: set[str] = set()
-
-    def interceptRequest(self, info):
-        url = info.requestUrl()
-        if info.resourceType() == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeMainFrame:
-            s = url.toString()
-            uj = szuro.tisztit(s) or szuro.https_ra(s, self.kivetelek)
-            if uj:
-                if uj.startswith("https://") and s.startswith("http://"):
-                    self.felhuzott.add(url.host())
-                info.redirect(QUrl(uj))
-                return
-        elif info.firstPartyUrl().host() not in ENGEDETT:
-            d = szuro.tiltott(url.host(), self.lista.lista)
-            if d:
-                info.block(True)
-                self.blokkolt.emit(d)
-                return
-        info.setHttpHeader(b"Sec-GPC", b"1")
+def engedely_nev(k) -> str | None:
+    if isinstance(k, WebKit.UserMediaPermissionRequest):
+        if WebKit.user_media_permission_is_for_display_device(k):
+            return "képernyőmegosztás"
+        a, v = k.props.is_for_audio_device, k.props.is_for_video_device
+        return "kamera és mikrofon" if a and v else "kamera" if v else "mikrofon"
+    for osztaly, nev in [
+        ("GeolocationPermissionRequest", "pontos helyzet"), ("NotificationPermissionRequest", "értesítések"),
+        ("ClipboardPermissionRequest", "vágólap"), ("PointerLockPermissionRequest", "egérzár"),
+        ("WebsiteDataAccessPermissionRequest", "sütik elérése beágyazott oldalként"),
+    ]:
+        if isinstance(k, getattr(WebKit, osztaly, ())):
+            return nev
+    return None
 
 
-class Oldal(QWebEnginePage):
-    def __init__(self, lap):
-        super().__init__(lap.identitas.profil, lap)
-        self.lap = lap
-
-    def acceptNavigationRequest(self, url, tipus, fokeret):
-        if fokeret:
-            A = QWebEngineSettings.WebAttribute
-            szint = self.lap.ablak.szint
-            js = self.lap.identitas.profil.settings().testAttribute(A.JavascriptEnabled)
-            if szint == 2 or (szint == 1 and url.scheme() == "http" and not szuro.helyi(url.host())):
-                js = False
-            self.settings().setAttribute(A.JavascriptEnabled, js)
-            self.settings().setAttribute(A.WebGLEnabled, szint == 0)
-            self.settings().setAttribute(A.ForceDarkMode, self.lap.ablak.sotet)
-        return super().acceptNavigationRequest(url, tipus, fokeret)
-
-    def createWindow(self, tipus):
-        hatter = tipus == QWebEnginePage.WebWindowType.WebBrowserBackgroundTab
-        return self.lap.ablak.uj_lap(self.lap.identitas, hatterben=hatter).page()
-
-
-ENGEDELY_NEV = {
-    "MediaAudioCapture": "mikrofon", "MediaVideoCapture": "kamera", "MediaAudioVideoCapture": "kamera és mikrofon",
-    "Geolocation": "pontos helyzet", "Notifications": "értesítések", "DesktopVideoCapture": "képernyőmegosztás",
-    "DesktopAudioVideoCapture": "képernyő és hang", "ClipboardReadWrite": "vágólap", "MouseLock": "egérzár",
-    "LocalFontsAccess": "telepített betűtípusok",
-}
-
-
-class Lap(QWebEngineView):
-    def __init__(self, ablak, identitas):
-        super().__init__()
+class Lap(WebKit.WebView):
+    def __init__(self, ablak, identitas, rokon=None):
+        if rokon:
+            super().__init__(related_view=rokon, user_content_manager=identitas.tartalom)
+        else:
+            super().__init__(network_session=identitas.munkamenet, user_content_manager=identitas.tartalom)
         self.ablak = ablak
         self.identitas = identitas
         identitas.lapok += 1
         self.blokkolva = Counter()
-        self.setPage(Oldal(self))
-        self.elfogo = Elfogo(self)
-        self.elfogo.blokkolt.connect(self.blokk)
-        self.page().setUrlRequestInterceptor(self.elfogo)
-        pg = self.page()
-        pg.permissionRequested.connect(self.engedely)
-        pg.fullScreenRequested.connect(ablak.teljes_kepernyo)
-        pg.desktopMediaRequested.connect(lambda r: r.selectScreen(r.screensModel().index(0, 0)))
-        self.loadFinished.connect(self.betoltott)
+        self.felhuzott: set[str] = set()
         self.host = ""
         self.utoljara = time.monotonic()
-        self.urlChanged.connect(self.uj_cim)
-        pg.recentlyAudibleChanged.connect(lambda _: ablak.lap_frissult(self))
-        pg.audioMutedChanged.connect(lambda _: ablak.lap_frissult(self))
-        pg.linkHovered.connect(lambda u: ablak.link_mutat(self, u))
+        self.alszik = False
+        self.set_hexpand(True)
+        self.set_vexpand(True)
+        s = WebKit.Settings(
+            enable_developer_extras=True, enable_dns_prefetching=False, enable_hyperlink_auditing=False,
+            javascript_can_open_windows_automatically=False, media_playback_requires_user_gesture=True,
+            enable_webrtc=not TOR, enable_media_stream=True, enable_encrypted_media=False,
+            allow_file_access_from_file_urls=False, allow_universal_access_from_file_urls=False,
+            enable_page_cache=True,
+        )
+        self.set_settings(s)
+        self.connect("decide-policy", self.dontes)
+        self.connect("create", self.uj_ablak)
+        self.connect("load-changed", self.betoltes)
+        self.connect("load-failed", self.hiba)
+        self.connect("permission-request", self.engedely)
+        self.connect("enter-fullscreen", lambda _: ablak.teljes_kepernyo(True) or False)
+        self.connect("leave-fullscreen", lambda _: ablak.teljes_kepernyo(False) or False)
+        self.connect("show-notification", self.ertesites)
+        self.connect("user-message-received", self.uzenet)
+        self.connect("mouse-target-changed", lambda _, t, __: ablak.link_mutat(self, t.get_link_uri() if t.context_is_link() else ""))
+        for p in ("uri", "title", "is-playing-audio", "is-muted"):
+            self.connect(f"notify::{p}", lambda *_: ablak.lap_frissult(self))
+        self.connect("notify::estimated-load-progress", lambda *_: ablak.tolto_frissit(self))
+        fc = self.get_find_controller()
+        fc.connect("counted-matches", lambda _, n: ablak.talalat_jelez(self, n))
+        fc.connect("failed-to-find-text", lambda _: ablak.talalat_jelez(self, 0))
 
-    def uj_cim(self, u):
-        if u.host() != self.host:
-            self.host = u.host()
-            self.blokkolva.clear()
-            self.setZoomFactor(self.ablak.nagyitas.get(self.host, 1.0))
+    def dontes(self, _, d, tipus):
+        if tipus == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            s = d.get_navigation_action().get_request().get_uri()
+            uj = szuro.tisztit(s) or szuro.https_ra(s, self.identitas.kivetelek)
+            if uj:
+                if uj.startswith("https://") and s.startswith("http://"):
+                    self.felhuzott.add(gazda(s))
+                d.ignore()
+                self.load_uri(uj)
+                return True
+            szint = self.ablak.szint
+            js = self.identitas.js and not (szint == 2 or (szint == 1 and s.startswith("http://") and not szuro.helyi(gazda(s))))
+            st = self.get_settings()
+            st.set_enable_javascript(js)
+            st.set_enable_webgl(szint == 0)
+        elif tipus == WebKit.PolicyDecisionType.RESPONSE and not d.is_mime_type_supported():
+            d.download()
+            return True
+        return False
+
+    def uj_ablak(self, _, akcio):
+        hatter = akcio.get_mouse_button() == 2 or bool(akcio.get_modifiers() & Gdk.ModifierType.CONTROL_MASK)
+        return self.ablak.uj_lap(self.identitas, hatterben=hatter, rokon=self)
+
+    def betoltes(self, _, esemeny):
+        u = self.get_uri() or ""
+        if esemeny == WebKit.LoadEvent.COMMITTED:
+            h = gazda(u)
+            if h != self.host:
+                self.host = h
+                self.blokkolva.clear()
+                self.set_zoom_level(self.ablak.nagyitas.get(h, 1.0))
+        elif esemeny == WebKit.LoadEvent.FINISHED:
+            h = gazda(u)
+            sel = szuro.oldal_szelektorok(h, self.ablak.blokk.oldal, self.ablak.blokk.kivetel) if h and h not in ENGEDETT else []
+            if sel:
+                self.evaluate_javascript(css_js(szuro.kozmetikus_css(sel)), -1, "shade", None, None, None)
+        self.ablak.lap_frissult(self)
+
+    def hiba(self, _, esemeny, uri, h):
+        host = gazda(uri)
+        if uri.startswith("https://") and host in self.felhuzott and host not in self.identitas.kivetelek \
+                and not h.matches(WebKit.NetworkError.quark(), WebKit.NetworkError.CANCELLED):
+            self.identitas.kivetelek.add(host)
+            self.load_uri("http://" + uri[len("https://"):])
+            return True
+        return False
 
     def blokk(self, d):
         self.blokkolva[d] += 1
         self.ablak.munkamenet[d] += 1
         self.ablak.lap_frissult(self)
 
-    def betoltott(self, ok):
-        u = self.url()
-        if not ok and u.scheme() == "https" and u.host() in self.elfogo.felhuzott and u.host() not in self.identitas.kivetelek:
-            self.identitas.kivetelek.add(u.host())
-            u.setScheme("http")
-            self.setUrl(u)
-        sel = szuro.oldal_szelektorok(u.host(), self.ablak.blokk.oldal, self.ablak.blokk.kivetel) if ok and u.host() not in ENGEDETT else []
-        if sel:
-            self.page().runJavaScript(css_js(szuro.kozmetikus_css(sel)), QWebEngineScript.ScriptWorldId.ApplicationWorld)
-        self.ablak.lap_frissult(self)
+    def uzenet(self, _, u):
+        if u.get_name() == "blokk":
+            self.blokk(u.get_parameters().get_string())
+            return True
+        return False
 
-    def engedely(self, e: QWebEnginePermission):
-        nev = ENGEDELY_NEV.get(e.permissionType().name, e.permissionType().name)
-        v = QMessageBox.question(self.ablak, "Engedély", f"{e.origin().host()} ehhez kér hozzáférést: {nev}\n\nCsak erre az identitásra és csak most.")
-        e.grant() if v == QMessageBox.Yes else e.deny()
+    def engedely(self, _, k):
+        nev = engedely_nev(k)
+        if not nev:
+            k.deny()
+            return True
+        self.ablak.kerdes("Engedély", f"{self.host or 'Az oldal'} ehhez kér hozzáférést: {nev}\n\nCsak erre az identitásra és csak most.",
+                          lambda igen: k.allow() if igen else k.deny())
+        return True
+
+    def ertesites(self, _, n):
+        subprocess.Popen(["notify-send", "-a", "Shade", "--", n.get_title() or "Shade", n.get_body() or ""])
+        return True
 
     def uj_lap_oldal(self):
-        self.setHtml(self.ablak.kezdolap(self.identitas), QUrl("about:blank"))
+        self.load_html(self.ablak.kezdolap(self.identitas), None)
 
 
-def cimke(szoveg: str) -> QLabel:
-    c = QLabel(szoveg, objectName="cimke")
-    c.setContentsMargins(8, 0, 8, 0)
-    c.setIndent(0)
-    return c
+class Pont(Gtk.DrawingArea):
+    def __init__(self, szin):
+        super().__init__(content_width=8, content_height=8, valign=Gtk.Align.CENTER)
+        rgba = Gdk.RGBA()
+        rgba.parse(szin)
+        self.set_draw_func(lambda _, cr, w, h: (cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1), cr.arc(w / 2, h / 2, 4, 0, math.tau), cr.fill()))
 
 
-class LapSor(QWidget):
+class LapSor(Gtk.ListBoxRow):
     def __init__(self, szin):
         super().__init__()
-        h = QHBoxLayout(self)
-        h.setContentsMargins(8, 0, 8, 0)
-        h.setSpacing(10)
-        pont = QLabel()
-        pont.setFixedSize(8, 8)
-        pont.setStyleSheet(f"background:{szin};border-radius:4px;")
-        self.cim = QLabel("Új lap")
-        self.cim.setObjectName("lapcim")
-        self.szam = QLabel("")
-        self.szam.setObjectName("szam")
-        h.addWidget(pont)
-        h.addWidget(self.cim, 1)
-        h.addWidget(self.szam)
+        h = Gtk.Box(spacing=10)
+        h.append(Pont(szin))
+        self.cim = cimke("Új lap", "lapcim", hexpand=True, ellipsize=Pango.EllipsizeMode.END)
+        self.szam = cimke("", "szam")
+        h.append(self.cim)
+        h.append(self.szam)
+        self.set_child(h)
 
     def beallit(self, cim, szam, hang=""):
-        fm = self.cim.fontMetrics()
-        self.cim.setText(fm.elidedText(cim or "Új lap", Qt.ElideRight, 160 if not hang else 120))
-        self.szam.setText(" ".join(x for x in (hang, str(szam) if szam else "") if x))
+        self.cim.set_label(cim or "Új lap")
+        self.szam.set_label(" ".join(x for x in (hang, str(szam) if szam else "") if x))
 
 
-class LapLista(QListWidget):
-    kozepso = Signal(int)
-
-    def mouseReleaseEvent(self, e):
-        if e.button() == Qt.MiddleButton:
-            it = self.itemAt(e.position().toPoint())
-            if it:
-                self.kozepso.emit(self.row(it))
-                return
-        super().mouseReleaseEvent(e)
-
-
-STILUS = f"""
-* {{ font-family: Inter; font-size: 13px; color: {SZIN['szoveg']}; }}
-QMainWindow, #jobb {{ background: {SZIN['hatter']}; }}
-#oldalsav {{ background: {SZIN['mely']}; border-right: 1px solid {SZIN['vonal']}; }}
-#marka {{ font-size: 15px; font-weight: 500; }}
-#mod {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['halk']}; }}
-#cimke {{ font-size: 12px; color: {SZIN['halk']}; }}
-#allapotnev {{ color: {SZIN['masod']}; }}
-#allapotertek, #szam {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['halk']}; }}
-#lapcim {{ color: {SZIN['masod']}; }}
-#linkcimke {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-top-right-radius: 6px; padding: 3px 8px; }}
-QListWidget {{ background: transparent; border: none; outline: none; }}
-QListWidget::item {{ height: 36px; margin: 0 0 2px 0; border-radius: 8px; border: 1px solid transparent; }}
-QListWidget::item:selected {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; }}
-QListWidget::item:hover:!selected {{ background: {SZIN['felulet']}; }}
-#parancssor {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 12px; }}
-#parancssor QLineEdit {{ background: {SZIN['felulet']}; font-size: 14px; }}
-#kieg {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 4px; font-family: 'JetBrains Mono'; font-size: 12px; }}
-#kieg::item {{ height: 28px; padding: 0 8px; border-radius: 6px; color: {SZIN['masod']}; }}
-#kieg::item:selected {{ background: rgba(237,237,237,0.06); color: {SZIN['szoveg']}; }}
-QSplitter::handle {{ background: {SZIN['vonal']}; }}
-#eszkozsor {{ background: {SZIN['hatter']}; border-bottom: 1px solid {SZIN['vonal']}; }}
-QLineEdit {{ background: {SZIN['felulet']}; border: 1px solid {SZIN['vonal']}; border-radius: 8px; padding: 0 8px; selection-background-color: {SZIN['kijeloles']}; }}
-QLineEdit:focus {{ background: {SZIN['emelt']}; border: 1px solid rgba(237,237,237,0.20); }}
-QToolButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; }}
-QToolButton:hover {{ background: {SZIN['emelt']}; }}
-QToolButton:pressed {{ background: {SZIN['felulet']}; }}
-QToolButton:focus {{ border: 1px solid rgba(237,237,237,0.20); }}
-QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 8px; min-height: 32px; max-height: 32px; padding: 0 8px; text-align: left; color: {SZIN['masod']}; }}
-QPushButton:hover {{ background: {SZIN['felulet']}; color: {SZIN['szoveg']}; }}
-QPushButton:pressed {{ background: {SZIN['emelt']}; }}
-QPushButton:focus {{ border: 1px solid rgba(237,237,237,0.20); }}
-#pajzs {{ font-family: 'JetBrains Mono'; font-size: 12px; color: {SZIN['masod']}; padding: 0 8px; }}
-QMenu {{ background: {SZIN['emelt']}; border: 1px solid {SZIN['vonal']}; border-radius: 12px; padding: 4px; }}
-QMenu::item {{ padding: 8px 12px; border-radius: 8px; }}
-QMenu::item:selected {{ background: rgba(237,237,237,0.06); }}
-QMenu::item:disabled {{ color: {SZIN['halk']}; font-family: 'JetBrains Mono'; font-size: 12px; }}
-QMenu::separator {{ height: 1px; background: {SZIN['vonal']}; margin: 4px 8px; }}
-QProgressBar {{ background: transparent; border: none; max-height: 2px; }}
-QProgressBar::chunk {{ background: {SZIN['lampa']}; }}
-QMessageBox, QInputDialog, QFileDialog {{ background: {SZIN['felulet']}; }}
-QToolTip {{ background: {SZIN['emelt']}; color: {SZIN['szoveg']}; border: 1px solid {SZIN['vonal']}; border-radius: 6px; padding: 4px 8px; }}
-QScrollBar:vertical {{ background: transparent; width: 8px; }}
-QScrollBar::handle:vertical {{ background: {SZIN['emelt']}; border-radius: 4px; min-height: 24px; }}
-QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{ background: none; height: 0; }}
+def stilus() -> str:
+    S = SZIN
+    return f"""
+* {{ font-family: Inter, sans-serif; font-size: 13px; color: {S['szoveg']}; }}
+window, .jobb {{ background: {S['hatter']}; }}
+.oldalsav {{ background: {S['mely']}; border-right: 1px solid {S['vonal']}; padding: 0 12px 12px 12px; }}
+.marka {{ font-size: 15px; font-weight: 500; }}
+.mod, .szam, .allapotertek {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {S['halk']}; }}
+.cimke {{ font-size: 12px; color: {S['halk']}; padding: 0 8px; }}
+.allapotnev {{ color: {S['masod']}; }}
+.lapcim {{ color: {S['masod']}; }}
+.linkcimke {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {S['masod']}; background: {S['felulet']}; border: 1px solid {S['vonal']}; border-radius: 0 6px 0 0; padding: 3px 8px; }}
+list, listview {{ background: transparent; }}
+list row {{ min-height: 36px; margin-bottom: 2px; border-radius: 8px; border: 1px solid transparent; padding: 0 8px; }}
+list row:selected {{ background: {S['emelt']}; border-color: {S['vonal']}; }}
+list row:hover:not(:selected) {{ background: {S['felulet']}; }}
+.eszkozsor {{ background: {S['hatter']}; border-bottom: 1px solid {S['vonal']}; padding: 0 12px; }}
+entry {{ background: {S['felulet']}; border: 1px solid {S['vonal']}; border-radius: 8px; min-height: 30px; padding: 0 8px; box-shadow: none; outline: none; }}
+entry:focus-within {{ background: {S['emelt']}; border-color: rgba(237,237,237,0.20); }}
+entry selection {{ background: {S['kijeloles']}; color: #fff; }}
+button {{ background: transparent; border: 1px solid transparent; border-radius: 8px; box-shadow: none; min-height: 30px; padding: 0 8px; }}
+button:hover {{ background: {S['emelt']}; }}
+button:active {{ background: {S['felulet']}; }}
+button:focus-visible {{ outline: 1px solid rgba(237,237,237,0.20); }}
+button label {{ font-weight: normal; }}
+.ikongomb {{ min-width: 30px; padding: 0; }}
+.oldalgomb {{ color: {S['masod']}; }}
+.oldalgomb:hover {{ background: {S['felulet']}; }}
+.oldalgomb label {{ color: {S['masod']}; }}
+.pajzs label {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {S['masod']}; }}
+popover > contents {{ background: {S['emelt']}; border: 1px solid {S['vonal']}; border-radius: 12px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }}
+popover button {{ padding: 6px 12px; }}
+popover button:hover {{ background: rgba(237,237,237,0.06); }}
+popover .info {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {S['halk']}; padding: 6px 12px; }}
+popover separator {{ background: {S['vonal']}; margin: 4px 8px; min-height: 1px; }}
+popover checkbutton {{ padding: 6px 8px; border-radius: 8px; }}
+popover checkbutton:hover {{ background: rgba(237,237,237,0.06); }}
+checkbutton check {{ background: {S['felulet']}; border: 1px solid rgba(237,237,237,0.2); border-radius: 4px; min-width: 14px; min-height: 14px; }}
+checkbutton check:checked {{ background: {S['lampa']}; border-color: {S['lampa']}; }}
+.parancssor {{ background: {S['emelt']}; border: 1px solid {S['vonal']}; border-radius: 12px; padding: 8px; }}
+.parancssor entry {{ min-height: 38px; font-size: 14px; }}
+.kieg row {{ min-height: 28px; }}
+.kieg label {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {S['masod']}; }}
+paned > separator {{ background: {S['vonal']}; min-width: 1px; }}
+.csik {{ min-height: 2px; background: transparent; }}
+.csik.aktiv {{ background: {S['lampa']}; }}
+progressbar trough {{ background: transparent; min-height: 2px; border: none; }}
+progressbar progress {{ background: {S['lampa']}; min-height: 2px; border-radius: 0; }}
+tooltip {{ background: {S['emelt']}; border: 1px solid {S['vonal']}; border-radius: 6px; }}
+scrollbar slider {{ background: {S['emelt']}; min-width: 6px; border-radius: 4px; }}
+.parbeszed {{ background: {S['felulet']}; padding: 20px; }}
 """
 
 
-def paletta() -> QPalette:
-    p = QPalette()
-    for szerep, kulcs in [
-        (QPalette.Window, "hatter"), (QPalette.Base, "felulet"), (QPalette.AlternateBase, "emelt"),
-        (QPalette.Button, "emelt"), (QPalette.ToolTipBase, "emelt"),
-        (QPalette.WindowText, "szoveg"), (QPalette.Text, "szoveg"), (QPalette.ButtonText, "szoveg"),
-        (QPalette.ToolTipText, "szoveg"), (QPalette.PlaceholderText, "halk"), (QPalette.Highlight, "kijeloles"),
-    ]:
-        p.setColor(szerep, QColor(SZIN[kulcs]))
-    p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
-    return p
-
-
-class Parancssor(QDialog):
-    def __init__(self, ablak, tetelek):
-        super().__init__(ablak, Qt.FramelessWindowHint | Qt.Popup)
-        self.setObjectName("parancssor")
-        self.tetelek = tetelek
-        self.setFixedWidth(560)
-        v = QVBoxLayout(self)
-        v.setContentsMargins(8, 8, 8, 8)
-        v.setSpacing(8)
-        self.mezo = QLineEdit()
-        self.mezo.setPlaceholderText("Lap, könyvjelző vagy parancs")
-        self.mezo.setFixedHeight(40)
-        self.mezo.addAction(ikon("kereso"), QLineEdit.LeadingPosition)
-        self.mezo.textChanged.connect(self.szur)
-        self.mezo.returnPressed.connect(self.futtat)
-        self.mezo.installEventFilter(self)
-        self.lista = QListWidget()
-        self.lista.itemActivated.connect(lambda _: self.futtat())
-        self.lista.itemClicked.connect(lambda _: self.futtat())
-        v.addWidget(self.mezo)
-        v.addWidget(self.lista)
-        self.szur("")
-        g = ablak.geometry()
-        self.move(g.x() + (g.width() - 560) // 2, g.y() + 96)
-
-    def eventFilter(self, obj, e):
-        if e.type() == e.Type.KeyPress and e.key() in (Qt.Key_Down, Qt.Key_Up):
-            self.lista.setCurrentRow(max(0, min(self.lista.count() - 1, self.lista.currentRow() + (1 if e.key() == Qt.Key_Down else -1))))
-            return True
-        return super().eventFilter(obj, e)
-
-    def szur(self, szoveg):
-        self.lista.clear()
-        szavak = szoveg.lower().split()
-        self.talalt = [t for t in self.tetelek if all(sz in (t[0] + " " + t[1]).lower() for sz in szavak)]
-        for fajta, cim, _ in self.talalt:
-            it = QListWidgetItem()
-            it.setSizeHint(QSize(0, 36))
-            self.lista.addItem(it)
-            self.lista.setItemWidget(it, ParancsSor(fajta, cim))
-        self.lista.setFixedHeight(max(1, min(8, len(self.talalt))) * 38)
-        self.lista.setVisible(bool(self.talalt))
-        self.adjustSize()
-        self.lista.setCurrentRow(0)
-
-    def futtat(self):
-        i = self.lista.currentRow()
-        if 0 <= i < len(self.talalt):
-            self.accept()
-            self.talalt[i][2]()
-
-
-class ParancsSor(QWidget):
-    def __init__(self, fajta, cim):
-        super().__init__()
-        h = QHBoxLayout(self)
-        h.setContentsMargins(12, 0, 12, 0)
-        c = QLabel(objectName="lapcim")
-        c.setText(c.fontMetrics().elidedText(cim, Qt.ElideRight, 400))
-        h.addWidget(c, 1)
-        h.addWidget(QLabel(fajta, objectName="szam"))
-
-
-class Ablak(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Shade")
-        self.resize(1360, 860)
+class Ablak(Gtk.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Shade", default_width=1360, default_height=860)
         self.munkamenet = Counter()
-        self.blokk = Blokklista()
-        self.kozmetika_kesz = False
+        self.blokk = Blokklista(self.blokk_kesz)
         self.bezartak: list[tuple[str, Identitas]] = []
         self.nagyitas: dict[str, float] = {}
         self.szint = 0
@@ -620,250 +531,316 @@ class Ablak(QMainWindow):
         self.felolvaso: list[subprocess.Popen] = []
         self.lapok: list[Lap] = []
         self.letoltesek: list[dict] = []
-
-        gyoker = QWidget()
-        fo = QHBoxLayout(gyoker)
-        fo.setContentsMargins(0, 0, 0, 0)
-        fo.setSpacing(0)
-
-        self.oldalsav = QFrame(objectName="oldalsav")
-        self.oldalsav.setFixedWidth(256)
-        ov = QVBoxLayout(self.oldalsav)
-        ov.setContentsMargins(12, 0, 12, 12)
-        ov.setSpacing(0)
-        fej = QFrame(objectName="fej")
-        fej.setFixedHeight(48)
-        fh = QHBoxLayout(fej)
-        fh.setContentsMargins(8, 0, 8, 0)
-        fh.addWidget(QLabel("Shade", objectName="marka"))
-        fh.addStretch()
-        self.mod = QLabel(objectName="mod")
-        fh.addWidget(self.mod)
-        ov.addWidget(fej)
-        ov.addSpacing(12)
-        ov.addWidget(cimke("Lapok"))
-        ov.addSpacing(4)
-        self.lista = LapLista()
-        self.lista.currentRowChanged.connect(self.valt)
-        self.lista.kozepso.connect(self.bezar)
-        self.lista.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.lista.customContextMenuRequested.connect(self.lap_menu)
-        ov.addWidget(self.lista, 1)
-        ov.addSpacing(16)
-        ov.addWidget(cimke("Könyvjelzők"))
-        ov.addSpacing(4)
+        self.osztott: Lap | None = None
+        self.osztott_fokusz = False
+        self.csendes = False
         self.szef = konyvjelzo.Szef(ADAT / "konyvjelzok.bin")
-        self.kj_lista = QListWidget()
-        self.kj_lista.setMaximumHeight(5 * 38)
-        self.kj_lista.itemClicked.connect(lambda it: self.akt().setUrl(QUrl(it.data(Qt.UserRole))))
-        self.kj_lista.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.kj_lista.customContextMenuRequested.connect(self.kj_menu)
-        ov.addWidget(self.kj_lista)
-        self.kj_nyit = QPushButton(ikon("lakat"), "Feloldás")
-        self.kj_nyit.clicked.connect(lambda: self.kj_felold() and self.kj_frissit())
-        ov.addWidget(self.kj_nyit)
-        ov.addSpacing(16)
-        ov.addWidget(cimke("Állapot"))
-        ov.addSpacing(4)
-        racs = QGridLayout()
-        racs.setContentsMargins(8, 0, 8, 0)
-        racs.setHorizontalSpacing(12)
-        racs.setVerticalSpacing(4)
-        self.allapot: dict[str, QLabel] = {}
+
+        fo = Gtk.Box()
+        self.set_child(fo)
+        self.oldalsav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, width_request=256)
+        self.oldalsav.add_css_class("oldalsav")
+        fo.append(self.oldalsav)
+        ov = self.oldalsav
+        fej = Gtk.Box(height_request=48, margin_start=8, margin_end=8)
+        fej.append(cimke("Shade", "marka", hexpand=True))
+        self.mod = cimke("", "mod")
+        fej.append(self.mod)
+        ov.append(fej)
+        ov.append(cimke("Lapok", margin_top=12, margin_bottom=4))
+        self.lista = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.lista.connect("row-selected", lambda _, r: None if self.csendes or r is None else self.valt(r.get_index()))
+        katt = Gtk.GestureClick(button=0)
+        katt.connect("pressed", self.lista_katt)
+        self.lista.add_controller(katt)
+        ov.append(Gtk.ScrolledWindow(child=self.lista, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
+        ov.append(cimke("Könyvjelzők", margin_top=16, margin_bottom=4))
+        self.kj_lista = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, activate_on_single_click=True)
+        self.kj_lista.connect("row-activated", lambda _, r: self.akt().load_uri(r.url))
+        kk = Gtk.GestureClick(button=3)
+        kk.connect("pressed", self.kj_menu)
+        self.kj_lista.add_controller(kk)
+        self.kj_gorgo = Gtk.ScrolledWindow(child=self.kj_lista, max_content_height=5 * 38, propagate_natural_height=True,
+                                           hscrollbar_policy=Gtk.PolicyType.NEVER)
+        ov.append(self.kj_gorgo)
+        self.kj_nyit = szoveg_gomb("lakat", "Feloldás", lambda: self.kj_felold(self.kj_frissit))
+        ov.append(self.kj_nyit)
+        ov.append(cimke("Állapot", margin_top=16, margin_bottom=4))
+        racs = Gtk.Grid(column_spacing=12, row_spacing=4, margin_start=8, margin_end=8)
+        self.allapot: dict[str, Gtk.Label] = {}
         for i, nev in enumerate(["Tiltólista", "DNS", "Szint", "Identitás", "Letöltés"]):
-            c = QLabel(nev, objectName="allapotnev")
-            e = QLabel(objectName="allapotertek")
-            e.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            racs.addWidget(c, i, 0)
-            racs.addWidget(e, i, 1)
+            c = cimke(nev, "allapotnev", hexpand=True)
+            e = cimke("", "allapotertek", xalign=1)
+            racs.attach(c, 0, i, 1, 1)
+            racs.attach(e, 1, i, 1, 1)
             self.allapot[nev] = e
             if nev == "Letöltés":
                 self.letoltes_sor = (c, e)
-                c.hide()
-                e.hide()
-        ov.addLayout(racs)
-        ov.addSpacing(16)
-        for szoveg, nev, fv in [
-            ("Új identitás", "plusz", lambda: self.uj_lap()),
-            ("Kiürítés", "radir", self.kiurit),
-        ]:
-            b = QPushButton(ikon(nev), szoveg)
-            b.clicked.connect(fv)
-            ov.addWidget(b)
-        self.modvalto = QPushButton(ikon("halo"), "Kilépés a Torból" if TOR else "Tor mód")
-        self.modvalto.clicked.connect(self.tor_valt)
-        ov.addWidget(self.modvalto)
+                c.set_visible(False)
+                e.set_visible(False)
+        ov.append(racs)
+        ov.append(Gtk.Box(height_request=16))
+        ov.append(szoveg_gomb("plusz", "Új identitás", lambda: self.uj_lap()))
+        ov.append(szoveg_gomb("radir", "Kiürítés", self.kiurit))
+        ov.append(szoveg_gomb("halo", "Kilépés a Torból" if TOR else "Tor mód", self.tor_valt))
 
-        jobb = QWidget(objectName="jobb")
-        jv = QVBoxLayout(jobb)
-        jv.setContentsMargins(0, 0, 0, 0)
-        jv.setSpacing(0)
-        self.eszkozsor = QFrame(objectName="eszkozsor")
-        eh = QHBoxLayout(self.eszkozsor)
-        self.eszkozsor.setFixedHeight(48)
-        eh.setContentsMargins(12, 0, 12, 0)
-        eh.setSpacing(4)
-        for nev, fv in [("vissza", lambda: self.akt().back()), ("elore", lambda: self.akt().forward()), ("frissit", lambda: self.akt().reload())]:
-            tb = QToolButton()
-            tb.setIcon(ikon(nev, meret=16))
-            tb.setIconSize(QSize(16, 16))
-            tb.setFixedSize(32, 32)
-            tb.clicked.connect(fv)
-            eh.addWidget(tb)
-        eh.addSpacing(8)
-        self.cim = QLineEdit()
-        self.cim.setPlaceholderText("Keresés vagy cím")
-        self.cim.setFixedHeight(32)
-        self.cim.returnPressed.connect(self.megnyit)
-        self.lakat = QAction(ikon("lakat"), "", self.cim)
-        self.cim.addAction(self.lakat, QLineEdit.LeadingPosition)
-        self.csillag = QAction(ikon("csillag"), "", self.cim)
-        self.csillag.setToolTip("Könyvjelző (Ctrl+D)")
-        self.csillag.triggered.connect(self.kj_hozzaad)
-        self.cim.addAction(self.csillag, QLineEdit.TrailingPosition)
-        self.kieg = QStringListModel(self)
-        kitolto = QCompleter(self.kieg, self.cim)
-        kitolto.setFilterMode(Qt.MatchContains)
-        kitolto.setCaseSensitivity(Qt.CaseInsensitive)
-        kitolto.setMaxVisibleItems(8)
-        kitolto.popup().setObjectName("kieg")
-        kitolto.activated.connect(lambda _: QTimer.singleShot(0, self.megnyit))
-        self.cim.setCompleter(kitolto)
-        QApplication.instance().focusChanged.connect(lambda _, uj: self.kieg_frissit() if uj is self.cim else None)
-        eh.addWidget(self.cim, 1)
-        eh.addSpacing(8)
-        self.letolt_gomb = QToolButton()
-        self.letolt_gomb.setIcon(ikon("letoltes"))
-        self.letolt_gomb.setFixedSize(32, 32)
-        self.letolt_gomb.setToolTip("Letöltések")
-        self.letolt_gomb.clicked.connect(self.letoltes_menu)
-        self.letolt_gomb.hide()
-        eh.addWidget(self.letolt_gomb)
-        self.pajzs = QToolButton(objectName="pajzs")
-        self.pajzs.setIcon(ikon("pajzs"))
-        self.pajzs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.pajzs.setFixedHeight(32)
-        self.pajzs.clicked.connect(self.pajzs_menu)
-        eh.addWidget(self.pajzs)
-        jv.addWidget(self.eszkozsor)
-        self.keresosav = QFrame(objectName="eszkozsor")
-        kh = QHBoxLayout(self.keresosav)
-        kh.setContentsMargins(12, 8, 12, 8)
-        kh.setSpacing(4)
-        self.keresomezo = QLineEdit()
-        self.keresomezo.setPlaceholderText("Keresés az oldalon")
-        self.keresomezo.setFixedSize(320, 32)
-        self.keresomezo.textChanged.connect(lambda _: self.keres_lep())
-        self.keresomezo.returnPressed.connect(lambda: self.keres_lep(QGuiApplication.keyboardModifiers() & Qt.ShiftModifier))
-        self.talalat = QLabel(objectName="szam")
-        kh.addWidget(self.keresomezo)
+        jobb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+        jobb.add_css_class("jobb")
+        fo.append(jobb)
+        self.eszkozsor = Gtk.Box(height_request=48, spacing=4)
+        self.eszkozsor.add_css_class("eszkozsor")
+        eh = self.eszkozsor
+        for nev, fv in [("vissza", lambda: self.akt().go_back()), ("elore", lambda: self.akt().go_forward()), ("frissit", lambda: self.akt().reload())]:
+            b = gomb(nev, fv)
+            b.set_valign(Gtk.Align.CENTER)
+            eh.append(b)
+        self.cim = Gtk.Entry(hexpand=True, valign=Gtk.Align.CENTER, placeholder_text="Keresés vagy cím", margin_start=8, margin_end=8)
+        self.cim.set_icon_from_paintable(Gtk.EntryIconPosition.PRIMARY, textura("lakat"))
+        self.cim.set_icon_from_paintable(Gtk.EntryIconPosition.SECONDARY, textura("csillag"))
+        self.cim.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, "Könyvjelző (Ctrl+D)")
+        self.cim.connect("icon-press", lambda _, p: self.kj_hozzaad() if p == Gtk.EntryIconPosition.SECONDARY else None)
+        self.cim.connect("activate", lambda _: self.megnyit())
+        self.cim.connect("changed", lambda _: self.kieg_frissit())
+        ck = Gtk.EventControllerKey()
+        ck.connect("key-pressed", self.cim_billentyu)
+        self.cim.add_controller(ck)
+        cf = Gtk.EventControllerFocus()
+        cf.connect("leave", lambda _: GLib.timeout_add(150, lambda: self.kieg.popdown() or False))
+        self.cim.add_controller(cf)
+        eh.append(self.cim)
+        self.kieg_lista = Gtk.ListBox()
+        self.kieg_lista.add_css_class("kieg")
+        self.kieg_lista.connect("row-activated", lambda _, r: (self.cim.set_text(r.url), self.megnyit()))
+        self.kieg = Gtk.Popover(child=self.kieg_lista, autohide=False, has_arrow=False, position=Gtk.PositionType.BOTTOM,
+                                halign=Gtk.Align.START, can_focus=False)
+        self.kieg.set_parent(self.cim)
+        self.letolt_gomb = gomb("letoltes", self.letoltes_menu, "Letöltések")
+        self.letolt_gomb.set_valign(Gtk.Align.CENTER)
+        self.letolt_gomb.set_visible(False)
+        eh.append(self.letolt_gomb)
+        ph = Gtk.Box(spacing=6)
+        self.pajzs_kep = kep("pajzs")
+        self.pajzs_szam = Gtk.Label(label="0")
+        ph.append(self.pajzs_kep)
+        ph.append(self.pajzs_szam)
+        self.pajzs = Gtk.Button(child=ph, valign=Gtk.Align.CENTER, tooltip_text="Blokkolás és adatvédelem ezen az oldalon")
+        self.pajzs.add_css_class("pajzs")
+        self.pajzs.connect("clicked", lambda _: self.pajzs_menu())
+        eh.append(self.pajzs)
+        jobb.append(self.eszkozsor)
+
+        self.keresosav = Gtk.Box(spacing=4, margin_top=8, margin_bottom=8)
+        self.keresosav.add_css_class("eszkozsor")
+        self.keresomezo = Gtk.Entry(placeholder_text="Keresés az oldalon", width_request=320)
+        self.keresomezo.connect("changed", lambda _: self.keres_lep(uj=True))
+        self.keresomezo.connect("activate", lambda _: self.keres_lep(bool(self.billentyuzet_shift())))
+        self.keresosav.append(self.keresomezo)
         for nev, fv in [("fel", lambda: self.keres_lep(True)), ("le", lambda: self.keres_lep()), ("x", self.keres_zar)]:
-            tb = QToolButton()
-            tb.setIcon(ikon(nev))
-            tb.setFixedSize(32, 32)
-            tb.clicked.connect(fv)
-            kh.addWidget(tb)
-        kh.addSpacing(8)
-        kh.addWidget(self.talalat)
-        kh.addStretch()
-        self.keresosav.hide()
-        jv.addWidget(self.keresosav)
-        self.tolto = QProgressBar()
-        self.tolto.setTextVisible(False)
-        self.tolto.setFixedHeight(2)
-        jv.addWidget(self.tolto)
-        self.verem = QStackedWidget()
-        self.osztott: Lap | None = None
-        self.osztott_fokusz = False
-        self.osztas = QSplitter(Qt.Horizontal)
-        self.osztas.setChildrenCollapsible(False)
-        self.osztas.setHandleWidth(1)
+            self.keresosav.append(gomb(nev, fv))
+        self.talalat = cimke("", "szam", margin_start=8)
+        self.keresosav.append(self.talalat)
+        self.keresosav.set_visible(False)
+        jobb.append(self.keresosav)
+        self.tolto = Gtk.ProgressBar()
+        jobb.append(self.tolto)
+
+        self.verem = Gtk.Stack(hexpand=True, vexpand=True)
+        self.osztas = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL, wide_handle=False, shrink_start_child=False, shrink_end_child=False)
         self.panelek = []
         for i in range(2):
-            p = QWidget()
-            pv = QVBoxLayout(p)
-            pv.setContentsMargins(0, 0, 0, 0)
-            pv.setSpacing(0)
-            csik = QFrame()
-            csik.setFixedHeight(2)
-            csik.hide()
-            pv.addWidget(csik)
-            if i == 0:
-                pv.addWidget(self.verem, 1)
-            self.panelek.append((p, pv, csik))
-            self.osztas.addWidget(p)
-        self.panelek[1][0].hide()
-        jv.addWidget(self.osztas, 1)
-        self.linkcimke = QLabel(self, objectName="linkcimke")
-        self.linkcimke.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.linkcimke.hide()
-        QApplication.instance().focusChanged.connect(self.fokusz_valt)
+            p = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+            csik = Gtk.Box()
+            csik.add_css_class("csik")
+            csik.set_visible(False)
+            p.append(csik)
+            tarto = self.verem if i == 0 else Gtk.Box(hexpand=True, vexpand=True)
+            p.append(tarto)
+            f = Gtk.EventControllerFocus()
+            f.connect("enter", lambda _, i=i: self.fokusz_valt(i == 1))
+            p.add_controller(f)
+            self.panelek.append((p, tarto, csik))
+        self.osztas.set_start_child(self.panelek[0][0])
+        self.osztas.set_end_child(self.panelek[1][0])
+        self.panelek[1][0].set_visible(False)
+        self.reteg = Gtk.Overlay(child=self.osztas, vexpand=True)
+        self.linkcimke = cimke("", "linkcimke", halign=Gtk.Align.START, valign=Gtk.Align.END, ellipsize=Pango.EllipsizeMode.MIDDLE,
+                               can_target=False)
+        self.linkcimke.set_visible(False)
+        self.reteg.add_overlay(self.linkcimke)
+        jobb.append(self.reteg)
 
-        fo.addWidget(self.oldalsav)
-        fo.addWidget(jobb, 1)
-        self.setCentralWidget(gyoker)
-
+        vezerlo = Gtk.ShortcutController(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        self.add_controller(vezerlo)
         for kulcs, fv in [
-            ("Ctrl+T", lambda: self.uj_lap()),
-            ("Ctrl+Shift+N", lambda: self.uj_lap(self.akt().identitas)),
-            ("Ctrl+Shift+T", self.visszanyit),
-            ("Ctrl+D", self.kj_hozzaad),
-            ("Ctrl+K", self.parancssor),
-            ("Ctrl+\\", lambda: self.osztott_valt()),
-            ("Ctrl+U", lambda: self.uj_lap(self.akt().identitas, url="view-source:" + self.akt().url().toString())),
-            ("Ctrl+Shift+C", self.link_masol),
-            ("Ctrl+Shift+S", self.kepernyokep),
-            ("Ctrl+W", lambda: self.bezar(self.lista.currentRow())),
-            ("Ctrl+L", lambda: (self.cim.setFocus(), self.cim.selectAll())),
-            ("F6", lambda: (self.cim.setFocus(), self.cim.selectAll())),
-            ("Ctrl+Tab", lambda: self.lista.setCurrentRow((self.lista.currentRow() + 1) % self.lista.count())),
-            ("Ctrl+Shift+Tab", lambda: self.lista.setCurrentRow((self.lista.currentRow() - 1) % self.lista.count())),
-            ("F5", lambda: self.akt().reload()), ("Ctrl+R", lambda: self.akt().reload()),
-            ("Alt+Left", lambda: self.akt().back()), ("Alt+Right", lambda: self.akt().forward()),
-            ("Ctrl+Shift+Del", self.kiurit), ("Ctrl+Shift+O", self.tor_valt),
-            ("Ctrl+F", self.keres), ("Ctrl+Shift+R", self.olvaso), ("Ctrl+M", lambda: self.nemit(self.akt())), ("F12", self.fejleszto),
-            ("Ctrl++", lambda: self.nagyit(0.1)),
-            ("Ctrl+=", lambda: self.nagyit(0.1)),
-            ("Ctrl+-", lambda: self.nagyit(-0.1)),
-            ("Ctrl+0", lambda: self.nagyit(None)),
-            ("Ctrl+P", self.pdf),
-            ("Escape", lambda: self.keres_zar() if self.keresosav.isVisible() else (self.akt().page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen) if self.isFullScreen() else None)),
-            ("Ctrl+Shift+L", self.uj_aramkor),
-            ("Ctrl+Shift+U", self.felolvas),
-            *[(f"Ctrl+{n}", lambda n=n: self.lista.setCurrentRow(min(n, self.lista.count()) - 1)) for n in range(1, 9)],
-            ("Ctrl+9", lambda: self.lista.setCurrentRow(self.lista.count() - 1)),
+            ("<Control>t", lambda: self.uj_lap()),
+            ("<Control><Shift>n", lambda: self.uj_lap(self.akt().identitas)),
+            ("<Control><Shift>t", self.visszanyit),
+            ("<Control>d", self.kj_hozzaad),
+            ("<Control>k", self.parancssor),
+            ("<Control>backslash", lambda: self.osztott_valt()),
+            ("<Control>u", self.forras),
+            ("<Control><Shift>c", self.link_masol),
+            ("<Control><Shift>s", self.kepernyokep),
+            ("<Control>w", lambda: self.bezar(self.lapok.index(self.akt()))),
+            ("<Control>l", self.cimre),
+            ("F6", self.cimre),
+            ("<Control>Tab", lambda: self.sor_valaszt((self.akt_index() + 1) % len(self.lapok))),
+            ("<Control><Shift>ISO_Left_Tab", lambda: self.sor_valaszt((self.akt_index() - 1) % len(self.lapok))),
+            ("F5", lambda: self.akt().reload()), ("<Control>r", lambda: self.akt().reload()),
+            ("<Alt>Left", lambda: self.akt().go_back()), ("<Alt>Right", lambda: self.akt().go_forward()),
+            ("<Control><Shift>Delete", self.kiurit), ("<Control><Shift>o", self.tor_valt),
+            ("<Control>f", self.keres), ("<Control><Shift>r", self.olvaso), ("<Control>m", lambda: self.nemit(self.akt())),
+            ("F12", self.fejleszto),
+            ("<Control>plus", lambda: self.nagyit(0.1)), ("<Control>equal", lambda: self.nagyit(0.1)),
+            ("<Control>KP_Add", lambda: self.nagyit(0.1)), ("<Control>minus", lambda: self.nagyit(-0.1)),
+            ("<Control>KP_Subtract", lambda: self.nagyit(-0.1)), ("<Control>0", lambda: self.nagyit(None)),
+            ("<Control>p", self.pdf),
+            ("<Control><Shift>l", self.uj_aramkor),
+            ("<Control><Shift>u", self.felolvas),
+            *[(f"<Control>{n}", lambda n=n: self.sor_valaszt(min(n, len(self.lapok)) - 1)) for n in range(1, 9)],
+            ("<Control>9", lambda: self.sor_valaszt(len(self.lapok) - 1)),
         ]:
-            QShortcut(QKeySequence(kulcs), self, fv)
+            vezerlo.add_shortcut(Gtk.Shortcut.new(Gtk.ShortcutTrigger.parse_string(kulcs),
+                                                  Gtk.CallbackAction.new(lambda *_, fv=fv: (fv(), True)[1])))
+        vezerlo.add_shortcut(Gtk.Shortcut.new(Gtk.ShortcutTrigger.parse_string("Escape"),
+                                              Gtk.CallbackAction.new(lambda *_: self.keres_zar() or True if self.keresosav.get_visible() else False)))
 
-        self.altato = QTimer(self)
-        self.altato.timeout.connect(self.altat)
-        self.altato.start(60_000)
+        self.connect("close-request", lambda _: self.leallit() or False)
+        GLib.timeout_add_seconds(60, self.altat)
         self.kj_frissit()
-        self.blokk.betoltve.connect(lambda n: (self.info_frissit(), self.kozmetika()))
         self.blokk.start()
         self.tor = None
         self.tor_szazalek = 100
         if TOR:
             self.tor_szazalek = 0
-            self.tor = TorIndito()
-            self.tor.allapot.connect(self.tor_allapot)
+            self.tor = TorIndito(self.tor_allapot)
             self.tor.start()
         self.info_frissit()
         self.uj_lap()
         for a in [x for x in ARGS if not x.startswith("--")]:
             self.uj_lap(url=szuro.cim_ertelmez(a, KERESO))
 
+    def billentyuzet_shift(self):
+        return Gdk.Display.get_default().get_default_seat().get_keyboard().get_modifier_state() & Gdk.ModifierType.SHIFT_MASK
+
+    def blokk_kesz(self):
+        for lap in self.lapok:
+            lap.send_message_to_page(WebKit.UserMessage.new("frissit", None), None, None, None)
+        self.kozmetika()
+        self.info_frissit()
+
     def kozmetika(self):
+        ENGEDETT_F.write_text("\n".join(sorted(ENGEDETT)) + "\n")
         for idt in {lap.identitas for lap in self.lapok}:
-            idt.kozmetika(self.blokk.css)
-        if self.blokk.css and not self.kozmetika_kesz:
-            self.kozmetika_kesz = True
-            for lap in self.lapok:
-                if lap.url().host() not in ENGEDETT:
-                    lap.page().runJavaScript(css_js(self.blokk.css), QWebEngineScript.ScriptWorldId.ApplicationWorld)
+            idt.kozmetika(self)
+        for lap in self.lapok:
+            lap.send_message_to_page(WebKit.UserMessage.new("frissit", None), None, None, None)
 
     def akt(self) -> Lap:
-        return self.osztott if self.osztott and self.osztott_fokusz else self.verem.currentWidget()
+        return self.osztott if self.osztott and self.osztott_fokusz else self.verem.get_visible_child()
+
+    def akt_index(self) -> int:
+        return self.lapok.index(self.akt())
+
+    def sor_valaszt(self, i):
+        r = self.lista.get_row_at_index(i)
+        if r:
+            self.lista.select_row(r)
+
+    def cimre(self):
+        self.cim.grab_focus()
+        self.cim.select_region(0, -1)
+
+    def lista_katt(self, g, _, x, y):
+        r = self.lista.get_row_at_y(int(y))
+        if r is None:
+            return
+        gomb_ = g.get_current_button()
+        if gomb_ == 2:
+            self.bezar(r.get_index())
+        elif gomb_ == 3:
+            self.lap_menu(self.lapok[r.get_index()], x, y)
+
+    def menu(self, horgony, tetelek, x=None, y=None):
+        pop = Gtk.Popover(has_arrow=False, position=Gtk.PositionType.BOTTOM)
+        doboz = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        for t in tetelek:
+            if t is None:
+                doboz.append(Gtk.Separator())
+            elif t[0] == "info":
+                doboz.append(cimke(t[1], "info"))
+            elif t[0] == "pipa":
+                _, szoveg, be, fv = t
+                cb = Gtk.CheckButton(label=szoveg, active=be)
+                cb.connect("toggled", lambda c, fv=fv: (pop.popdown(), fv(c.get_active())))
+                doboz.append(cb)
+            else:
+                szoveg, fv = t[0], t[1]
+                b = Gtk.Button(child=Gtk.Label(label=szoveg, xalign=0), sensitive=len(t) < 3 or t[2])
+                b.connect("clicked", lambda _, fv=fv: (pop.popdown(), GLib.idle_add(lambda: fv() and False)))
+                doboz.append(b)
+        pop.set_child(doboz)
+        pop.set_parent(horgony)
+        if x is not None:
+            r = Gdk.Rectangle()
+            r.x, r.y, r.width, r.height = int(x), int(y), 1, 1
+            pop.set_pointing_to(r)
+        pop.connect("closed", lambda p: GLib.idle_add(p.unparent))
+        pop.popup()
+
+    def kerdes(self, cim, szoveg, cb, igen="Igen"):
+        d = Gtk.AlertDialog(message=cim, detail=szoveg, buttons=["Mégse", igen], cancel_button=0, default_button=1, modal=True)
+
+        def kesz(d, r):
+            try:
+                cb(d.choose_finish(r) == 1)
+            except GLib.Error:
+                cb(False)
+
+        d.choose(self, None, kesz)
+
+    def uzen(self, cim, szoveg):
+        Gtk.AlertDialog(message=cim, detail=szoveg, modal=True).show(self)
+
+    def jelszo_ker(self, cim, szoveg, cb):
+        w = Gtk.Window(title=cim, transient_for=self, modal=True, default_width=380, resizable=False)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        v.add_css_class("parbeszed")
+        v.append(Gtk.Label(label=szoveg, xalign=0, wrap=True))
+        e = Gtk.PasswordEntry(show_peek_icon=True, activates_default=True)
+        v.append(e)
+        h = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        megse = Gtk.Button(label="Mégse")
+        ok = Gtk.Button(label="OK")
+        h.append(megse)
+        h.append(ok)
+        v.append(h)
+        w.set_child(v)
+        kesz = []
+
+        def lezar(ertek):
+            if not kesz:
+                kesz.append(1)
+                w.destroy()
+                cb(ertek)
+
+        megse.connect("clicked", lambda _: lezar(None))
+        ok.connect("clicked", lambda _: lezar(e.get_text()))
+        e.connect("activate", lambda _: lezar(e.get_text()))
+        w.connect("close-request", lambda _: lezar(None) or False)
+        w.present()
+
+    def ment_ker(self, cim, ut: Path, cb):
+        d = Gtk.FileDialog(title=cim, initial_name=ut.name, initial_folder=Gio.File.new_for_path(str(ut.parent)), modal=True)
+
+        def kesz(d, r):
+            try:
+                f = d.save_finish(r)
+                cb(f.get_path() if f else None)
+            except GLib.Error:
+                cb(None)
+
+        d.save(self, None, kesz)
 
     def osztott_valt(self, lap=None):
         if self.osztott:
@@ -871,271 +848,285 @@ class Ablak(QMainWindow):
             self.osztott_ki()
             if lap is None or lap is regi:
                 return
-        bal = self.verem.currentWidget()
+        bal = self.verem.get_visible_child()
         if lap is None or lap is bal:
-            tobbi = [l for l in self.lapok if l is not bal]
-            lap = max(tobbi, key=lambda l: l.utoljara) if tobbi else self.uj_lap(bal.identitas, hatterben=True)
-        self.verem.removeWidget(lap)
-        p, pv, _ = self.panelek[1]
-        pv.addWidget(lap, 1)
-        lap.show()
-        p.show()
+            tobbi = [x for x in self.lapok if x is not bal]
+            lap = max(tobbi, key=lambda x: x.utoljara) if tobbi else self.uj_lap(bal.identitas, hatterben=True)
+        self.verem.remove(lap)
+        p, tarto, _ = self.panelek[1]
+        tarto.append(lap)
+        p.set_visible(True)
         self.osztott = lap
-        self.osztas.setSizes([10_000, 10_000])
-        if lap.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
-            lap.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
-        if lap.url().toString() in ("about:blank", ""):
+        GLib.idle_add(lambda: self.osztas.set_position(self.osztas.get_width() // 2) and False)
+        self.ebreszt(lap)
+        if ures(lap.get_uri()):
             lap.uj_lap_oldal()
         self.fokusz_beallit(True)
-        lap.setFocus()
+        lap.grab_focus()
 
     def osztott_ki(self):
         lap, self.osztott = self.osztott, None
-        self.panelek[1][0].hide()
+        self.panelek[1][0].set_visible(False)
         if lap in self.lapok:
-            self.verem.addWidget(lap)
+            self.panelek[1][1].remove(lap)
+            self.verem.add_child(lap)
             self.lap_frissult(lap)
         self.fokusz_beallit(False)
 
     def fokusz_beallit(self, jobb: bool):
         self.osztott_fokusz = jobb and self.osztott is not None
         for i, (_, _, csik) in enumerate(self.panelek):
-            csik.setVisible(self.osztott is not None)
-            csik.setStyleSheet(f"background:{SZIN['lampa'] if (i == 1) == self.osztott_fokusz else 'transparent'};")
+            csik.set_visible(self.osztott is not None)
+            (csik.add_css_class if (i == 1) == self.osztott_fokusz else csik.remove_css_class)("aktiv")
         lap = self.akt()
         if lap in self.lapok:
-            self.lista.blockSignals(True)
-            self.lista.setCurrentRow(self.lapok.index(lap))
-            self.lista.blockSignals(False)
+            self.csendes = True
+            self.sor_valaszt(self.lapok.index(lap))
+            self.csendes = False
             self.lap_frissult(lap)
+            self.tolto_frissit(lap)
 
-    def fokusz_valt(self, _, uj):
-        if not self.osztott or uj is None:
-            return
-        w = uj
-        while w is not None and w not in (self.panelek[0][0], self.panelek[1][0]):
-            w = w.parentWidget()
-        if w is not None and (w is self.panelek[1][0]) != self.osztott_fokusz:
-            self.fokusz_beallit(w is self.panelek[1][0])
+    def fokusz_valt(self, jobb):
+        if self.osztott and jobb != self.osztott_fokusz:
+            self.fokusz_beallit(jobb)
 
-    def uj_lap(self, identitas=None, hatterben=False, url=None):
-        lap = Lap(self, identitas or Identitas(self))
-        lap.titleChanged.connect(lambda _: self.lap_frissult(lap))
-        lap.urlChanged.connect(lambda _: self.lap_frissult(lap))
-        lap.loadProgress.connect(lambda p: self.tolto.setValue(p if p < 100 else 0) if lap is self.akt() else None)
+    def uj_lap(self, identitas=None, hatterben=False, url=None, rokon=None):
+        lap = Lap(self, identitas or Identitas(self), rokon)
         self.lapok.append(lap)
-        self.verem.addWidget(lap)
-        it = QListWidgetItem()
-        it.setSizeHint(QSize(0, 34))
-        self.lista.addItem(it)
-        self.lista.setItemWidget(it, LapSor(lap.identitas.szin))
+        sor = LapSor(lap.identitas.szin)
+        self.lista.append(sor)
+        self.verem.add_child(lap)
         if url:
-            lap.setUrl(QUrl(url))
-        else:
+            lap.load_uri(url)
+        elif not rokon:
             lap.uj_lap_oldal()
         if not hatterben:
-            self.lista.setCurrentRow(self.lista.count() - 1)
-            if not url:
-                QTimer.singleShot(0, lambda: (self.cim.setFocus(), self.cim.clear()) if lap is self.akt() else None)
+            self.sor_valaszt(len(self.lapok) - 1)
+            if not url and not rokon:
+                GLib.idle_add(lambda: (self.cim.grab_focus(), self.cim.set_text("")) and False if lap is self.akt() else False)
         self.lap_frissult(lap)
+        self.info_frissit()
         return lap
 
     def bezar(self, i):
         if i < 0 or i >= len(self.lapok):
             return
         lap = self.lapok.pop(i)
-        if lap.url().toString() not in ("about:blank", ""):
-            self.bezartak = (self.bezartak + [(lap.url().toString(), lap.identitas)])[-20:]
-        self.lista.takeItem(i)
+        if not ures(lap.get_uri()):
+            self.bezartak = (self.bezartak + [(lap.get_uri(), lap.identitas)])[-20:]
+        self.csendes = True
+        self.lista.remove(self.lista.get_row_at_index(i))
+        self.csendes = False
         if lap is self.osztott:
             self.osztott = None
-            self.panelek[1][0].hide()
+            self.panelek[1][1].remove(lap)
+            self.panelek[1][0].set_visible(False)
             self.fokusz_beallit(False)
         else:
-            self.verem.removeWidget(lap)
-        idt = lap.identitas
-        idt.lapok -= 1
-        lap.page().deleteLater()
-        lap.deleteLater()
-        if idt.lapok == 0:
-            idt.profil.deleteLater()
+            self.verem.remove(lap)
+        lap.identitas.lapok -= 1
+        lap.try_close()
         if not self.lapok:
             self.uj_lap()
+        else:
+            self.sor_valaszt(min(i, len(self.lapok) - 1))
+        self.info_frissit()
+
+    def ebreszt(self, lap):
+        if lap.alszik:
+            lap.alszik = False
+            lap.reload()
 
     def valt(self, i):
-        if 0 <= i < len(self.lapok):
-            lap = self.lapok[i]
-            lap.utoljara = time.monotonic()
-            if lap.page().lifecycleState() != QWebEnginePage.LifecycleState.Active:
-                lap.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
-            if lap is self.osztott:
-                lap.setFocus()
-            else:
-                self.verem.setCurrentWidget(lap)
-            if lap.url().toString() in ("about:blank", ""):
-                lap.uj_lap_oldal()
-            self.cim.clearFocus()
-            self.fokusz_beallit(lap is self.osztott)
+        if not 0 <= i < len(self.lapok):
+            return
+        lap = self.lapok[i]
+        lap.utoljara = time.monotonic()
+        self.ebreszt(lap)
+        if lap is self.osztott:
+            lap.grab_focus()
+        else:
+            self.verem.set_visible_child(lap)
+        if ures(lap.get_uri()) and not lap.is_loading():
+            lap.uj_lap_oldal()
+        self.fokusz_beallit(lap is self.osztott)
+        self.lap_frissult(lap)
 
     def lap_frissult(self, lap):
         if lap not in self.lapok:
             return
         i = self.lapok.index(lap)
-        sor = self.lista.itemWidget(self.lista.item(i))
-        ures = lap.url().toString() in ("about:blank", "")
+        sor = self.lista.get_row_at_index(i)
+        u = lap.get_uri()
+        u_ures = ures(u)
         if sor:
-            pg = lap.page()
-            hang = "osztva" if lap is self.osztott else "néma" if pg.isAudioMuted() else ("hang" if pg.recentlyAudible() else ("alszik" if pg.lifecycleState() != QWebEnginePage.LifecycleState.Active else ""))
-            sor.beallit("Új lap" if ures else lap.title(), sum(lap.blokkolva.values()), hang)
+            hang = "osztva" if lap is self.osztott else "néma" if lap.get_is_muted() else "hang" if lap.is_playing_audio() else "alszik" if lap.alszik else ""
+            sor.beallit("Új lap" if u_ures else lap.get_title() or u, sum(lap.blokkolva.values()), hang)
         if lap is self.akt():
-            if not self.cim.hasFocus():
-                self.cim.setText("" if ures else lap.url().toString())
-            titkos = lap.url().scheme() == "https" or ures
-            self.lakat.setIcon(ikon("lakat") if titkos else ikon("nyitott", SZIN["lampa"]))
-            self.lakat.setToolTip("Titkosított kapcsolat" if titkos else "Titkosítatlan kapcsolat, ezen a lapon minden lehallgatható")
-            n = sum(lap.blokkolva.values())
-            ki = lap.url().host() in ENGEDETT
-            self.pajzs.setText("ki" if ki else str(n))
-            self.pajzs.setIcon(ikon("pajzs", SZIN["lampa"] if ki else SZIN["masod"]))
-            self.pajzs.setToolTip("Blokkolás és adatvédelem ezen az oldalon")
-            jelolt = self.szef.nyitva() and any(k["url"] == lap.url().toString() for k in self.szef.lista)
-            self.csillag.setIcon(ikon("csillag", SZIN["lampa"], kitolt=True) if jelolt else ikon("csillag"))
-            self.csillag.setVisible(not ures)
-            self.setWindowTitle(("Shade" if ures else f"{lap.title()} · Shade"))
+            if not self.cim.has_focus() and not self.cim.get_focus_child():
+                self.cim.set_text("" if u_ures else u)
+            titkos = (u or "").startswith("https://") or u_ures
+            self.cim.set_icon_from_paintable(Gtk.EntryIconPosition.PRIMARY, textura("lakat") if titkos else textura("nyitott", SZIN["lampa"]))
+            self.cim.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, "Titkosított kapcsolat" if titkos else "Titkosítatlan kapcsolat, ezen a lapon minden lehallgatható")
+            ki = gazda(u) in ENGEDETT
+            self.pajzs_szam.set_label("ki" if ki else str(sum(lap.blokkolva.values())))
+            self.pajzs_kep.set_from_paintable(textura("pajzs", SZIN["lampa"] if ki else SZIN["masod"]))
+            jelolt = self.szef.nyitva() and any(k["url"] == u for k in self.szef.lista)
+            self.cim.set_icon_from_paintable(Gtk.EntryIconPosition.SECONDARY,
+                                             None if u_ures else textura("csillag", SZIN["lampa"], True) if jelolt else textura("csillag"))
+            self.set_title("Shade" if u_ures else f"{lap.get_title() or u} · Shade")
+
+    def tolto_frissit(self, lap):
+        if lap is self.akt():
+            p = lap.get_estimated_load_progress()
+            self.tolto.set_fraction(0 if p >= 1 or not lap.is_loading() else p)
 
     def link_mutat(self, lap, u):
-        if not u or not lap.isVisible():
-            self.linkcimke.hide()
+        if not u or not lap.get_mapped():
+            self.linkcimke.set_visible(False)
             return
-        hely = lap.mapTo(self, lap.rect().bottomLeft())
-        self.linkcimke.setText(self.linkcimke.fontMetrics().elidedText(u, Qt.ElideMiddle, max(200, lap.width() // 2)))
-        self.linkcimke.adjustSize()
-        self.linkcimke.move(hely.x(), hely.y() - self.linkcimke.height() + 1)
-        self.linkcimke.raise_()
-        self.linkcimke.show()
+        ok, pont = lap.compute_point(self.reteg, Graphene.Point().init(0, 0))
+        self.linkcimke.set_margin_start(int(pont.x) if ok else 0)
+        self.linkcimke.set_max_width_chars(max(30, lap.get_width() // 16))
+        self.linkcimke.set_label(u)
+        self.linkcimke.set_visible(True)
 
     def megnyit(self):
-        s = self.cim.text().strip()
+        self.kieg.popdown()
+        s = self.cim.get_text().strip()
         if s:
-            self.akt().setUrl(QUrl(szuro.cim_ertelmez(s, KERESO)))
-            self.akt().setFocus()
+            self.akt().load_uri(szuro.cim_ertelmez(s, KERESO))
+            self.akt().grab_focus()
+
+    def kieg_frissit(self):
+        if not self.cim.has_focus() and not self.cim.get_focus_child():
+            return
+        s = self.cim.get_text().strip().lower()
+        tetelek = [k["url"] for k in self.szef.lista] + [x.get_uri() for x in self.lapok]
+        talalt = [t for t in dict.fromkeys(t for t in tetelek if not ures(t)) if s and s in t.lower() and t.lower() != s][:8]
+        while (r := self.kieg_lista.get_row_at_index(0)) is not None:
+            self.kieg_lista.remove(r)
+        for t in talalt:
+            r = Gtk.ListBoxRow(child=Gtk.Label(label=t, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=80))
+            r.url = t
+            self.kieg_lista.append(r)
+        if talalt:
+            self.kieg.set_size_request(self.cim.get_width(), -1)
+            self.kieg.popup()
+        else:
+            self.kieg.popdown()
+
+    def cim_billentyu(self, _, kulcs, __, ___):
+        if not self.kieg.get_visible():
+            return False
+        if kulcs in (Gdk.KEY_Down, Gdk.KEY_Up):
+            r = self.kieg_lista.get_selected_row()
+            i = (r.get_index() if r else -1) + (1 if kulcs == Gdk.KEY_Down else -1)
+            uj = self.kieg_lista.get_row_at_index(max(0, i))
+            if uj:
+                self.kieg_lista.select_row(uj)
+                self.cim.set_text(uj.url)
+                self.cim.set_position(-1)
+            return True
+        if kulcs == Gdk.KEY_Escape:
+            self.kieg.popdown()
+            return True
+        return False
 
     def info_frissit(self):
         if TOR:
-            self.mod.setText("tor" if self.tor_szazalek >= 100 else f"tor {self.tor_szazalek}%")
-            dns = "Tor-láncon"
+            self.mod.set_label("tor" if self.tor_szazalek >= 100 else f"tor {self.tor_szazalek}%")
         else:
-            self.mod.setText("közvetlen")
-            dns = "rendszer" if RENDSZER_DNS else "titkosított"
-        self.allapot["Tiltólista"].setText(f"{len(self.blokk.lista):,}".replace(",", " "))
-        self.allapot["DNS"].setText(dns)
-        self.allapot["Szint"].setText(SZINTEK[self.szint].lower())
-        self.allapot["Identitás"].setText(f"{len({id(l.identitas) for l in self.lapok})} ({len(self.lapok)} lap)")
+            self.mod.set_label("közvetlen")
+        self.allapot["Tiltólista"].set_label(f"{len(self.blokk.lista):,}".replace(",", " "))
+        self.allapot["DNS"].set_label("Tor-láncon" if TOR else "rendszer")
+        self.allapot["Szint"].set_label(SZINTEK[self.szint].lower())
+        self.allapot["Identitás"].set_label(f"{len({id(x.identitas) for x in self.lapok})} ({len(self.lapok)} lap)")
 
     def tor_allapot(self, sz):
         if sz < 0:
-            QMessageBox.warning(self, "Tor", "A tor nincs telepítve. Telepítés: sudo pacman -S tor" if sz == -1 else "A tor leállt, mielőtt kapcsolódott volna. Most semmi nem megy ki a hálózatra.")
+            self.uzen("Tor", "A tor nincs telepítve. Telepítés: sudo pacman -S tor" if sz == -1 else "A tor leállt, mielőtt kapcsolódott volna. Most semmi nem megy ki a hálózatra.")
             sz = 0
         self.tor_szazalek = sz
         self.info_frissit()
 
     def tor_valt(self):
-        if QMessageBox.question(self, "Mód váltása", "A váltás minden lapot és identitást töröl. Mehet?") != QMessageBox.Yes:
-            return
-        uj = [a for a in ARGS if a != "--tor"] + ([] if TOR else ["--tor"])
-        self.leallit()
-        os.execv(sys.executable, [sys.executable, str(MAPPA / "shade.py")] + uj)
+        def tovabb(igen):
+            if igen:
+                uj = [a for a in ARGS if a != "--tor"] + ([] if TOR else ["--tor"])
+                self.leallit()
+                os.execv(sys.executable, [sys.executable, str(MAPPA / "shade.py")] + uj)
+
+        self.kerdes("Mód váltása", "A váltás minden lapot és identitást töröl. Mehet?", tovabb)
 
     def kiurit(self):
         if self.osztott:
             self.osztott_ki()
-        for _ in range(len(self.lapok)):
+        self.csendes = True
+        while self.lapok:
             lap = self.lapok.pop()
-            self.lista.takeItem(len(self.lapok))
-            self.verem.removeWidget(lap)
-            lap.identitas.lapok -= 1
-            lap.page().deleteLater()
-            lap.deleteLater()
-            if lap.identitas.lapok == 0:
-                lap.identitas.profil.deleteLater()
+            self.lista.remove(self.lista.get_row_at_index(len(self.lapok)))
+            self.verem.remove(lap)
+            lap.try_close()
+        self.csendes = False
         self.munkamenet.clear()
         self.bezartak.clear()
         self.nagyitas.clear()
         self.szef.zar()
         self.kj_frissit()
-        QGuiApplication.clipboard().clear()
+        self.get_clipboard().set_content(None)
+        Gdk.Display.get_default().get_primary_clipboard().set_content(None)
         Identitas.szamlalo = 0
         self.uj_lap()
         self.info_frissit()
 
     def pajzs_menu(self):
         lap = self.akt()
-        host = lap.url().host()
-        m = QMenu(self)
-        if lap.blokkolva:
-            for d, c in lap.blokkolva.most_common(8):
-                m.addAction(f"{d}   {c}").setEnabled(False)
-        else:
-            m.addAction("Ezen az oldalon nem volt mit blokkolni").setEnabled(False)
-        m.addSeparator()
+        host = gazda(lap.get_uri())
+        t = [("info", f"{d}   {c}") for d, c in lap.blokkolva.most_common(8)] or [("info", "Ezen az oldalon nem volt mit blokkolni")]
+        t.append(None)
         if host:
-            a = m.addAction(f"Blokkolás itt: {host}")
-            a.setCheckable(True)
-            a.setChecked(host not in ENGEDETT)
-            a.toggled.connect(lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), self.kozmetika(), lap.reload()))
-        sz = m.addMenu("Biztonsági szint")
+            t.append(("pipa", f"Blokkolás itt: {host}", host not in ENGEDETT,
+                      lambda be: (ENGEDETT.discard(host) if be else ENGEDETT.add(host), self.kozmetika(), lap.reload())))
+        t.append(("info", "Biztonsági szint"))
         for i, nev in enumerate(SZINTEK):
-            a = sz.addAction(nev + ["", ": WebGL ki, http-n JavaScript ki", ": JavaScript és WebGL mindenhol ki"][i])
-            a.setCheckable(True)
-            a.setChecked(self.szint == i)
-            a.triggered.connect(lambda _=False, i=i: self.szint_allit(i))
-        st = m.addAction("Sötét mód minden oldalon")
-        st.setCheckable(True)
-        st.setChecked(self.sotet)
-        st.toggled.connect(lambda _: self.sotet_valt())
-        s = lap.identitas.profil.settings()
-        A = QWebEngineSettings.WebAttribute
-        js = m.addAction("JavaScript ebben az identitásban")
-        js.setCheckable(True)
-        js.setChecked(s.testAttribute(A.JavascriptEnabled))
-        js.toggled.connect(lambda be: (s.setAttribute(A.JavascriptEnabled, be), lap.reload()))
-        m.addSeparator()
-        m.addAction("Sütik és gyorsítótár törlése ebben az identitásban", lambda: (
-            lap.identitas.profil.cookieStore().deleteAllCookies(), lap.identitas.profil.clearHttpCache(), lap.reload()))
-        m.addAction("Megnyitás új identitásban", lambda: self.uj_lap(url=lap.url().toString()))
-        m.exec(self.pajzs.mapToGlobal(self.pajzs.rect().bottomLeft()))
+            t.append(("pipa", nev + ["", ": WebGL ki, http-n JavaScript ki", ": JavaScript és WebGL mindenhol ki"][i], self.szint == i,
+                      lambda _, i=i: self.szint_allit(i)))
+        t.append(None)
+        t.append(("pipa", "Sötét mód minden oldalon", self.sotet, lambda _: self.sotet_valt()))
+        t.append(("pipa", "JavaScript ebben az identitásban", lap.identitas.js,
+                  lambda be: (setattr(lap.identitas, "js", be), lap.reload())))
+        t.append(None)
+        t.append(("Sütik és gyorsítótár törlése ebben az identitásban", lambda: lap.identitas.munkamenet.get_website_data_manager().clear(
+            WebKit.WebsiteDataTypes.ALL, 0, None, lambda *_: lap.reload())))
+        t.append(("Megnyitás új identitásban", lambda: self.uj_lap(url=lap.get_uri())))
+        self.menu(self.pajzs, t)
 
     def nemit(self, lap):
-        lap.page().setAudioMuted(not lap.page().isAudioMuted())
+        lap.set_is_muted(not lap.get_is_muted())
 
-    def lap_menu(self, pont):
-        it = self.lista.itemAt(pont)
-        if not it:
-            return
-        i = self.lista.row(it)
-        lap = self.lapok[i]
-        m = QMenu(self)
-        m.addAction("Hang vissza" if lap.page().isAudioMuted() else "Némítás", lambda: self.nemit(lap))
-        m.addAction("Újra új identitásban", lambda: self.uj_lap(url=lap.url().toString()))
-        m.addAction("Lap ugyanebben az identitásban", lambda: self.uj_lap(lap.identitas))
-        m.addAction("Duplikálás", lambda: self.uj_lap(lap.identitas, url=lap.url().toString()))
-        m.addAction("Osztott nézet bezárása" if lap is self.osztott else "Megnyitás osztott nézetben", lambda: self.osztott_valt(lap))
-        m.addSeparator()
-        m.addAction("Bezárás", lambda: self.bezar(self.lapok.index(lap)))
-        m.addAction("Többi bezárása", lambda: [self.bezar(self.lapok.index(x)) for x in list(self.lapok) if x is not lap])
-        m.exec(self.lista.viewport().mapToGlobal(pont))
+    def lap_menu(self, lap, x, y):
+        self.menu(self.lista, [
+            ("Hang vissza" if lap.get_is_muted() else "Némítás", lambda: self.nemit(lap)),
+            ("Újra új identitásban", lambda: self.uj_lap(url=lap.get_uri())),
+            ("Lap ugyanebben az identitásban", lambda: self.uj_lap(lap.identitas)),
+            ("Duplikálás", lambda: self.uj_lap(lap.identitas, url=lap.get_uri())),
+            ("Osztott nézet bezárása" if lap is self.osztott else "Megnyitás osztott nézetben", lambda: self.osztott_valt(lap)),
+            None,
+            ("Bezárás", lambda: self.bezar(self.lapok.index(lap))),
+            ("Többi bezárása", lambda: [self.bezar(self.lapok.index(x)) for x in list(self.lapok) if x is not lap]),
+        ], x, y)
 
     def parancssor(self):
-        t = [("lap", l.title() or l.url().toString() or "Új lap", lambda l=l: self.lista.setCurrentRow(self.lapok.index(l)))
-             for l in self.lapok]
-        t += [("könyvjelző", k["cim"], lambda k=k: self.akt().setUrl(QUrl(k["url"]))) for k in self.szef.lista]
+        t = [("lap", x.get_title() or x.get_uri() or "Új lap", lambda x=x: self.sor_valaszt(self.lapok.index(x))) for x in self.lapok]
+        t += [("könyvjelző", k["cim"], lambda k=k: self.akt().load_uri(k["url"])) for k in self.szef.lista]
         t += [("parancs", nev, fv) for nev, fv in [
             ("Új identitás", lambda: self.uj_lap()),
             ("Lap ugyanebben az identitásban", lambda: self.uj_lap(self.akt().identitas)),
             ("Bezárt lap vissza", self.visszanyit),
             ("Könyvjelző be/ki", self.kj_hozzaad),
             ("Könyvjelzők feloldása" if not self.szef.nyitva() else "Könyvjelzők lezárása",
-             lambda: (self.kj_felold() if not self.szef.nyitva() else self.szef.zar(), self.kj_frissit())),
+             lambda: self.kj_felold(self.kj_frissit) if not self.szef.nyitva() else (self.szef.zar(), self.kj_frissit())),
             ("Osztott nézet be/ki", lambda: self.osztott_valt()),
             ("Olvasó mód", self.olvaso),
             ("Felolvasás be/ki", self.felolvas),
@@ -1145,7 +1136,7 @@ class Ablak(QMainWindow):
             ("Keresés az oldalon", self.keres),
             ("Mentés PDF-be", self.pdf),
             ("Képernyőkép", self.kepernyokep),
-            ("Oldal forrása", lambda: self.uj_lap(self.akt().identitas, url="view-source:" + self.akt().url().toString())),
+            ("Oldal forrása", self.forras),
             ("Link másolása", self.link_masol),
             ("Némítás be/ki", lambda: self.nemit(self.akt())),
             ("Letöltések", self.letoltes_menu),
@@ -1153,70 +1144,127 @@ class Ablak(QMainWindow):
             ("Kiürítés", self.kiurit),
             ("Kilépés a Torból" if TOR else "Tor mód", self.tor_valt),
         ]]
-        Parancssor(self, t).exec()
+        w = Gtk.Window(transient_for=self, modal=True, decorated=False, default_width=560, resizable=False)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        v.add_css_class("parancssor")
+        mezo = Gtk.SearchEntry(placeholder_text="Lap, könyvjelző vagy parancs")
+        lista = Gtk.ListBox()
+        gorgo = Gtk.ScrolledWindow(child=lista, hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True, max_content_height=8 * 38)
+        v.append(mezo)
+        v.append(gorgo)
+        w.set_child(v)
+        talalt = []
 
-    def kj_felold(self) -> bool:
+        def szur(*_):
+            szavak = mezo.get_text().lower().split()
+            talalt[:] = [x for x in t if all(sz in (x[0] + " " + x[1]).lower() for sz in szavak)]
+            while (r := lista.get_row_at_index(0)) is not None:
+                lista.remove(r)
+            for fajta, cim_, _ in talalt:
+                h = Gtk.Box(spacing=12)
+                h.append(cimke(cim_, "lapcim", hexpand=True, ellipsize=Pango.EllipsizeMode.END))
+                h.append(cimke(fajta, "szam"))
+                lista.append(Gtk.ListBoxRow(child=h))
+            gorgo.set_visible(bool(talalt))
+            lista.select_row(lista.get_row_at_index(0))
+
+        def futtat(*_):
+            r = lista.get_selected_row()
+            if r and r.get_index() < len(talalt):
+                fv = talalt[r.get_index()][2]
+                w.destroy()
+                GLib.idle_add(lambda: fv() and False)
+
+        def billentyu(_, kulcs, *__):
+            if kulcs in (Gdk.KEY_Down, Gdk.KEY_Up):
+                r = lista.get_selected_row()
+                i = (r.get_index() if r else 0) + (1 if kulcs == Gdk.KEY_Down else -1)
+                uj = lista.get_row_at_index(max(0, min(len(talalt) - 1, i)))
+                if uj:
+                    lista.select_row(uj)
+                return True
+            if kulcs == Gdk.KEY_Escape:
+                w.destroy()
+                return True
+            return False
+
+        mezo.connect("search-changed", szur)
+        mezo.connect("activate", futtat)
+        lista.connect("row-activated", futtat)
+        k = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        k.connect("key-pressed", billentyu)
+        w.add_controller(k)
+        szur()
+        w.present()
+        mezo.grab_focus()
+
+    def kj_felold(self, utana):
         if self.szef.nyitva():
-            return True
+            utana()
+            return
         uj = not self.szef.letezik()
         cim = "Könyvjelzők létrehozása" if uj else "Könyvjelzők feloldása"
-        jelszo, ok = QInputDialog.getText(self, cim, "Jelszó (titkosítva tárolja, csak ezzel nyílik):" if uj else "Jelszó:", QLineEdit.Password)
-        if not ok or not jelszo:
-            return False
-        if uj:
-            ujra, ok = QInputDialog.getText(self, cim, "Jelszó még egyszer:", QLineEdit.Password)
-            if not ok or ujra != jelszo:
-                QMessageBox.warning(self, cim, "A két jelszó nem egyezik")
-                return False
-        try:
-            self.szef.felold(jelszo)
-        except konyvjelzo.RosszJelszo as h:
-            QMessageBox.warning(self, cim, str(h))
-            return False
-        return True
+
+        def probal(jelszo):
+            try:
+                self.szef.felold(jelszo)
+            except konyvjelzo.RosszJelszo as h:
+                self.uzen(cim, str(h))
+                return
+            utana()
+
+        def elso(jelszo):
+            if not jelszo:
+                return
+            if not uj:
+                probal(jelszo)
+                return
+            self.jelszo_ker(cim, "Jelszó még egyszer:",
+                            lambda ujra: probal(jelszo) if ujra == jelszo else (self.uzen(cim, "A két jelszó nem egyezik") if ujra is not None else None))
+
+        self.jelszo_ker(cim, "Jelszó (titkosítva tárolja, csak ezzel nyílik):" if uj else "Jelszó:", elso)
 
     def kj_frissit(self):
         nyitva = self.szef.nyitva()
-        self.kj_lista.clear()
+        while (r := self.kj_lista.get_row_at_index(0)) is not None:
+            self.kj_lista.remove(r)
         for k in self.szef.lista:
-            it = QListWidgetItem(self.kj_lista.fontMetrics().elidedText(k["cim"], Qt.ElideRight, 196))
-            it.setData(Qt.UserRole, k["url"])
-            it.setToolTip(k["url"])
-            it.setSizeHint(QSize(0, 36))
-            self.kj_lista.addItem(it)
-        self.kj_lista.setVisible(nyitva and bool(self.szef.lista))
-        self.kj_nyit.setVisible(not nyitva)
-        self.kj_nyit.setText("Feloldás" if self.szef.letezik() else "Bekapcsolás")
+            r = Gtk.ListBoxRow(child=cimke(k["cim"], "lapcim", ellipsize=Pango.EllipsizeMode.END), tooltip_text=k["url"])
+            r.url = k["url"]
+            self.kj_lista.append(r)
+        self.kj_gorgo.set_visible(nyitva and bool(self.szef.lista))
+        self.kj_nyit.set_visible(not nyitva)
+        self.kj_nyit.cimke.set_label("Feloldás" if self.szef.letezik() else "Bekapcsolás")
         if self.lapok:
             self.lap_frissult(self.akt())
 
     def kj_hozzaad(self):
         lap = self.akt()
-        url = lap.url().toString()
-        if url in ("about:blank", "") or not self.kj_felold():
+        url = lap.get_uri()
+        if ures(url):
             return
-        meglevo = [i for i, k in enumerate(self.szef.lista) if k["url"] == url]
-        if meglevo:
-            self.szef.torol(meglevo[0])
-        else:
-            self.szef.hozzaad(lap.title(), url)
-        self.kj_frissit()
 
-    def kj_menu(self, pont):
-        it = self.kj_lista.itemAt(pont)
-        if not it:
+        def tovabb():
+            meglevo = [i for i, k in enumerate(self.szef.lista) if k["url"] == url]
+            if meglevo:
+                self.szef.torol(meglevo[0])
+            else:
+                self.szef.hozzaad(lap.get_title() or url, url)
+            self.kj_frissit()
+
+        self.kj_felold(tovabb)
+
+    def kj_menu(self, g, _, x, y):
+        r = self.kj_lista.get_row_at_y(int(y))
+        if not r:
             return
-        i, url = self.kj_lista.row(it), it.data(Qt.UserRole)
-        m = QMenu(self)
-        m.addAction("Megnyitás új identitásban", lambda: self.uj_lap(url=url))
-        m.addAction("Törlés", lambda: (self.szef.torol(i), self.kj_frissit()))
-        m.addSeparator()
-        m.addAction("Lezárás", lambda: (self.szef.zar(), self.kj_frissit()))
-        m.exec(self.kj_lista.viewport().mapToGlobal(pont))
-
-    def kieg_frissit(self):
-        tetelek = [k["url"] for k in self.szef.lista] + [l.url().toString() for l in self.lapok]
-        self.kieg.setStringList(list(dict.fromkeys(t for t in tetelek if t not in ("about:blank", ""))))
+        i, url = r.get_index(), r.url
+        self.menu(self.kj_lista, [
+            ("Megnyitás új identitásban", lambda: self.uj_lap(url=url)),
+            ("Törlés", lambda: (self.szef.torol(i), self.kj_frissit())),
+            None,
+            ("Lezárás", lambda: (self.szef.zar(), self.kj_frissit())),
+        ], x, y)
 
     def visszanyit(self):
         if not self.bezartak:
@@ -1224,63 +1272,115 @@ class Ablak(QMainWindow):
         url, idt = self.bezartak.pop()
         self.uj_lap(idt if idt.lapok > 0 else None, url=url)
 
+    def jelzes(self, szoveg):
+        self.linkcimke.set_margin_start(0)
+        self.linkcimke.set_label(szoveg)
+        self.linkcimke.set_visible(True)
+        GLib.timeout_add(1500, lambda: self.linkcimke.set_visible(False) or False)
+
     def link_masol(self):
-        QGuiApplication.clipboard().setText(self.akt().url().toString())
-        QToolTip.showText(self.cim.mapToGlobal(self.cim.rect().bottomLeft()), "Link vágólapra másolva", self.cim, msecShowTime=1500)
+        self.get_clipboard().set(self.akt().get_uri() or "")
+        self.jelzes("Link vágólapra másolva")
 
     def kepernyokep(self):
+        lap = self.akt()
         alap = Path.home() / "Képek"
-        nev = re.sub(r"[^\w.-]+", "-", self.akt().url().host() or "lap") + time.strftime("-%Y%m%d-%H%M%S.png")
-        ut, _ = QFileDialog.getSaveFileName(self, "Képernyőkép mentése", str((alap if alap.exists() else Path.home()) / nev), "PNG (*.png)")
-        if ut:
-            self.akt().grab().save(ut)
+        nev = re.sub(r"[^\w.-]+", "-", gazda(lap.get_uri()) or "lap") + time.strftime("-%Y%m%d-%H%M%S.png")
+
+        def ment(ut):
+            if ut:
+                lap.get_snapshot(WebKit.SnapshotRegion.VISIBLE, WebKit.SnapshotOptions.NONE, None,
+                                 lambda l, r: l.get_snapshot_finish(r).save_to_png(ut))
+
+        self.ment_ker("Képernyőkép mentése", (alap if alap.exists() else Path.home()) / nev, ment)
+
+    def forras(self):
+        lap = self.akt()
+        res = lap.get_main_resource()
+        if not res:
+            return
+
+        def kesz(r, eredmeny):
+            try:
+                adat = r.get_data_finish(eredmeny)
+            except GLib.Error:
+                return
+            uj = self.uj_lap(lap.identitas, rokon=None, url=None)
+            uj.load_plain_text(bytes(adat).decode(errors="replace"))
+
+        res.get_data(None, kesz)
 
     def nagyit(self, lepes):
         lap = self.akt()
-        z = 1.0 if lepes is None else min(5.0, max(0.3, round(lap.zoomFactor() + lepes, 2)))
-        lap.setZoomFactor(z)
-        if lap.url().host():
-            self.nagyitas[lap.url().host()] = z
-        for l in self.lapok:
-            if l is not lap and l.url().host() == lap.url().host():
-                l.setZoomFactor(z)
+        z = 1.0 if lepes is None else min(5.0, max(0.3, round(lap.get_zoom_level() + lepes, 2)))
+        h = gazda(lap.get_uri())
+        if h:
+            self.nagyitas[h] = z
+        for x in self.lapok:
+            if x is lap or (h and gazda(x.get_uri()) == h):
+                x.set_zoom_level(z)
 
     def altat(self):
         most = time.monotonic()
         for lap in self.lapok:
-            pg = lap.page()
-            if (lap is not self.akt() and most - lap.utoljara > 10 * 60 and not pg.recentlyAudible()
-                    and pg.lifecycleState() == QWebEnginePage.LifecycleState.Active and not lap.isVisible()):
-                pg.setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+            if (lap is not self.akt() and lap is not self.osztott and most - lap.utoljara > 10 * 60 and not lap.is_playing_audio()
+                    and not lap.alszik and not ures(lap.get_uri())):
+                lap.alszik = True
+                lap.terminate_web_process()
                 self.lap_frissult(lap)
+        return True
 
     def olvaso(self):
-        self.akt().page().runJavaScript((MAPPA / "olvaso.js").read_text(), QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        self.akt().evaluate_javascript((MAPPA / "olvaso.js").read_text(), -1, "shade", None, None, None)
 
     def pdf(self):
-        ut, _ = QFileDialog.getSaveFileName(self, "Mentés PDF-be", str(Path.home() / "lap.pdf"))
-        if ut:
-            self.akt().printToPdf(ut)
+        lap = self.akt()
+
+        def ment(ut):
+            if not ut:
+                return
+            nyomtato = []
+            Gtk.enumerate_printers(lambda p, *_: (nyomtato.append(p.get_name()) if p.is_virtual() and p.accepts_pdf() else None) or False, True)
+            ps = Gtk.PrintSettings()
+            ps.set_printer(nyomtato[0] if nyomtato else "Print to File")
+            ps.set("output-file-format", "pdf")
+            ps.set("output-uri", Gio.File.new_for_path(ut).get_uri())
+            op = WebKit.PrintOperation.new(lap)
+            op.set_print_settings(ps)
+            op.print_()
+
+        self.ment_ker("Mentés PDF-be", Path.home() / "lap.pdf", ment)
 
     def keres(self):
-        self.keresosav.show()
-        self.keresomezo.setFocus()
-        self.keresomezo.selectAll()
-        self.keres_lep()
+        self.keresosav.set_visible(True)
+        self.keresomezo.grab_focus()
+        self.keresomezo.select_region(0, -1)
+        self.keres_lep(uj=True)
 
-    def keres_lep(self, vissza=False):
-        szoveg = self.keresomezo.text()
-        jelzo = QWebEnginePage.FindFlag.FindBackward if vissza else QWebEnginePage.FindFlag(0)
+    def keres_lep(self, vissza=False, uj=False):
+        szoveg = self.keresomezo.get_text()
+        fc = self.akt().get_find_controller()
+        if not szoveg:
+            fc.search_finish()
+            self.talalat.set_label("")
+            return
+        if uj or fc.get_search_text() != szoveg:
+            o = WebKit.FindOptions.CASE_INSENSITIVE | WebKit.FindOptions.WRAP_AROUND
+            fc.count_matches(szoveg, o, 1000)
+            fc.search(szoveg, o, 1000)
+        elif vissza:
+            fc.search_previous()
+        else:
+            fc.search_next()
 
-        def eredmeny(r):
-            self.talalat.setText(f"{r.activeMatch()} / {r.numberOfMatches()}" if szoveg and r.numberOfMatches() else ("nincs találat" if szoveg else ""))
-
-        self.akt().findText(szoveg, jelzo, eredmeny)
+    def talalat_jelez(self, lap, n):
+        if lap is self.akt() and self.keresosav.get_visible():
+            self.talalat.set_label(f"{n} találat" if n else "nincs találat")
 
     def keres_zar(self):
-        self.keresosav.hide()
-        self.akt().findText("")
-        self.akt().setFocus()
+        self.keresosav.set_visible(False)
+        self.akt().get_find_controller().search_finish()
+        self.akt().grab_focus()
 
     def szint_allit(self, szint):
         self.szint = szint
@@ -1290,13 +1390,12 @@ class Ablak(QMainWindow):
 
     def sotet_valt(self):
         self.sotet = not self.sotet
-        for lap in self.lapok:
-            lap.page().settings().setAttribute(QWebEngineSettings.WebAttribute.ForceDarkMode, self.sotet)
-        self.akt().reload()
+        for idt in {lap.identitas for lap in self.lapok}:
+            idt.kozmetika(self)
 
     def uj_aramkor(self):
         if not TOR:
-            QMessageBox.information(self, "Új Tor-útvonal", "Ez csak Tor módban működik (Ctrl+Shift+O)")
+            self.uzen("Új Tor-útvonal", "Ez csak Tor módban működik (Ctrl+Shift+O)")
             return
         suti = CACHE / "tor" / "control_auth_cookie"
         try:
@@ -1304,13 +1403,13 @@ class Ablak(QMainWindow):
                 s.sendall(f"AUTHENTICATE {suti.read_bytes().hex()}\r\nSIGNAL NEWNYM\r\nQUIT\r\n".encode())
                 valasz = s.recv(1024).decode(errors="ignore")
         except OSError as h:
-            QMessageBox.warning(self, "Új Tor-útvonal", f"A Tor vezérlője nem érhető el ({h}). Csak a saját indítású Torral megy, a rendszer-Torral nem.")
+            self.uzen("Új Tor-útvonal", f"A Tor vezérlője nem érhető el ({h}). Csak a saját indítású Torral megy, a rendszer-Torral nem.")
             return
         if valasz.count("250") < 2:
-            QMessageBox.warning(self, "Új Tor-útvonal", "A Tor nem fogadta el a kérést")
+            self.uzen("Új Tor-útvonal", "A Tor nem fogadta el a kérést")
             return
-        url = self.akt().url().toString()
-        self.uj_lap(url=None if url in ("about:blank", "") else url)
+        url = self.akt().get_uri()
+        self.uj_lap(url=None if ures(url) else url)
 
     def felolvas(self):
         if any(p.poll() is None for p in self.felolvaso):
@@ -1319,12 +1418,16 @@ class Ablak(QMainWindow):
             self.felolvaso = []
             return
         if not (Path(PIPER).exists() and Path(PIPER_HANG).exists()):
-            QMessageBox.information(self, "Felolvasás", f"Nincs meg a Piper vagy a hang.\nSHADE_PIPER={PIPER}\nSHADE_HANG={PIPER_HANG}")
+            self.uzen("Felolvasás", f"Nincs meg a Piper vagy a hang.\nSHADE_PIPER={PIPER}\nSHADE_HANG={PIPER_HANG}")
             return
         js = ("(()=>{const k=String(getSelection()).trim();if(k)return k;"
               "const e=document.querySelector('article,main,[role=main]')||document.body;return e.innerText})()")
 
-        def indit(szoveg):
+        def indit(lap, r):
+            try:
+                szoveg = lap.evaluate_javascript_finish(r).to_string()
+            except GLib.Error:
+                return
             szoveg = re.sub(r"\s+", " ", szoveg or "").strip()[:8000]
             if not szoveg:
                 return
@@ -1335,73 +1438,75 @@ class Ablak(QMainWindow):
             piper.stdin.close()
             self.felolvaso = [piper, lejatszo]
 
-        self.akt().page().runJavaScript(js, QWebEngineScript.ScriptWorldId.ApplicationWorld, indit)
+        self.akt().evaluate_javascript(js, -1, "shade", None, None, indit)
 
     def fejleszto(self):
-        v = QWebEngineView()
-        v.setPage(QWebEnginePage(self.akt().identitas.profil, v))
-        self.akt().page().setDevToolsPage(v.page())
-        v.setWindowTitle("Fejlesztői eszközök")
-        v.resize(1000, 700)
-        v.setAttribute(Qt.WA_DeleteOnClose)
-        v.show()
+        self.akt().get_inspector().show()
 
-    def teljes_kepernyo(self, kerdes):
-        kerdes.accept()
-        be = kerdes.toggleOn()
-        self.oldalsav.setVisible(not be)
-        self.eszkozsor.setVisible(not be)
-        self.tolto.setVisible(not be)
-        self.showFullScreen() if be else self.showNormal()
+    def teljes_kepernyo(self, be):
+        for w in (self.oldalsav, self.eszkozsor, self.tolto):
+            w.set_visible(not be)
+        self.fullscreen() if be else self.unfullscreen()
 
-    def letoltes(self, d: QWebEngineDownloadRequest):
+    def letoltes(self, _, d):
         alap = Path.home() / "Letöltések"
         if not alap.exists():
             alap = Path.home() / "Downloads"
-        ut, _ = QFileDialog.getSaveFileName(self, "Letöltés mentése", str(alap / d.downloadFileName()))
-        if not ut:
-            d.cancel()
-            return
-        d.setDownloadDirectory(str(Path(ut).parent))
-        d.setDownloadFileName(Path(ut).name)
-        t = {"nev": d.downloadFileName(), "ut": ut, "szazalek": 0, "allapot": "fut"}
-        self.letoltesek.insert(0, t)
-        self.letolt_gomb.show()
-        for w in self.letoltes_sor:
-            w.show()
-        self.allapot["Letöltés"].setToolTip(t["nev"])
+        t = {"nev": "", "ut": "", "szazalek": 0, "allapot": "fut", "hiba": False}
 
-        def halad():
-            t["szazalek"] = d.receivedBytes() * 100 // max(d.totalBytes(), 1)
-            self.allapot["Letöltés"].setText(f"{t['szazalek']}%")
+        def cel(d, javasolt):
+            def kesz(ut):
+                if not ut:
+                    d.cancel()
+                    return
+                t["nev"], t["ut"] = Path(ut).name, ut
+                d.set_allow_overwrite(True)
+                d.set_destination(ut)
+                self.letoltesek.insert(0, t)
+                self.letolt_gomb.set_visible(True)
+                for w in self.letoltes_sor:
+                    w.set_visible(True)
+                self.allapot["Letöltés"].set_tooltip_text(t["nev"])
 
-        def vege():
-            ok = d.state() == QWebEngineDownloadRequest.DownloadState.DownloadCompleted
-            t["allapot"] = "kesz" if ok else "hiba"
+            self.ment_ker("Letöltés mentése", alap / (javasolt or "letoltes"), kesz)
+            return True
+
+        def halad(*_):
+            t["szazalek"] = int(d.get_estimated_progress() * 100)
+            self.allapot["Letöltés"].set_label(f"{t['szazalek']}%")
+
+        def vege(_):
+            if t not in self.letoltesek:
+                return
+            t["allapot"] = "hiba" if t["hiba"] else "kesz"
             if not any(x["allapot"] == "fut" for x in self.letoltesek):
                 for w in self.letoltes_sor:
-                    w.hide()
-            subprocess.Popen(["notify-send", "-a", "Shade", "--", "Letöltve" if ok else "A letöltés megszakadt", t["nev"]])
+                    w.set_visible(False)
+            subprocess.Popen(["notify-send", "-a", "Shade", "--", "A letöltés megszakadt" if t["hiba"] else "Letöltve", t["nev"]])
 
-        d.receivedBytesChanged.connect(halad)
-        d.isFinishedChanged.connect(vege)
-        d.accept()
+        d.connect("decide-destination", cel)
+        d.connect("notify::estimated-progress", halad)
+        d.connect("failed", lambda *_: t.update(hiba=True))
+        d.connect("finished", vege)
 
     def letoltes_torles(self):
         self.letoltesek = [x for x in self.letoltesek if x["allapot"] == "fut"]
-        self.letolt_gomb.setVisible(bool(self.letoltesek))
+        self.letolt_gomb.set_visible(bool(self.letoltesek))
+
+    def megnyit_fajl(self, ut, mappa=False):
+        l = Gtk.FileLauncher.new(Gio.File.new_for_path(ut))
+        l.open_containing_folder(self, None, None) if mappa else l.launch(self, None, None)
 
     def letoltes_menu(self):
-        m = QMenu(self)
-        for t in self.letoltesek[:10]:
-            allapot = {"fut": f"{t['szazalek']}%", "kesz": "kész", "hiba": "megszakadt"}[t["allapot"]]
-            a = m.addAction(f"{t['nev'][:40]}    {allapot}", lambda t=t: QDesktopServices.openUrl(QUrl.fromLocalFile(t["ut"])))
-            a.setEnabled(t["allapot"] == "kesz")
-        m.addSeparator()
+        t = []
+        for x in self.letoltesek[:10]:
+            allapot = {"fut": f"{x['szazalek']}%", "kesz": "kész", "hiba": "megszakadt"}[x["allapot"]]
+            t.append((f"{x['nev'][:40]}    {allapot}", lambda x=x: self.megnyit_fajl(x["ut"]), x["allapot"] == "kesz"))
+        t.append(None)
         if self.letoltesek:
-            m.addAction("Mappa megnyitása", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self.letoltesek[0]["ut"]).parent))))
-        m.addAction("Lista törlése", self.letoltes_torles)
-        m.exec(self.letolt_gomb.mapToGlobal(self.letolt_gomb.rect().bottomLeft()))
+            t.append(("Mappa megnyitása", lambda: self.megnyit_fajl(self.letoltesek[0]["ut"], True)))
+        t.append(("Lista törlése", self.letoltes_torles))
+        self.menu(self.letolt_gomb, t)
 
     def kezdolap(self, idt: Identitas) -> str:
         osszes = sum(self.munkamenet.values())
@@ -1412,12 +1517,7 @@ class Ablak(QMainWindow):
             f'<i><b style="width:{max(2, n * 100 // maxi)}%;{"background:" + SZIN["lampa"] if j == 0 else ""}"></b></i></li>'
             for j, (d, n) in enumerate(top)
         ) or '<li class="ures">Ebben a munkamenetben még semmi nem próbált követni</li>'
-        if TOR:
-            halo = "Tor-hálózat, három ugrás"
-        elif RENDSZER_DNS:
-            halo = "Közvetlen, a rendszer DNS-ével"
-        else:
-            halo = "Közvetlen, titkosított DNS: " + html.escape(urlsplit(DOH).hostname or DOH)
+        halo = "Tor-hálózat, három ugrás" if TOR else "Közvetlen, a rendszer DNS-ével"
         kereso = html.escape(KERESO.split("?")[0])
         return f"""<!doctype html><html lang="hu"><head><meta charset="utf-8"><title>Új lap</title><style>
 :root{{color-scheme:dark;--e:cubic-bezier(.22,1,.36,1)}}
@@ -1461,10 +1561,11 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
 <div><div class="cimsor"><span class="pont"></span><h1>Identitás {idt.nev}</h1></div>
 <div class="mag">mag {idt.mag} · bezáráskor nyomtalanul eltűnik</div>
 <dl>
+<dt>Motor</dt><dd>WebKit, nem Chromium</dd>
 <dt>Sütik</dt><dd>Csak ez az identitás látja őket</dd>
 <dt>Ujjlenyomat</dt><dd>Vászon és hang zajosítva, ez a mintája</dd>
 <dt>Hálózat</dt><dd>{halo}</dd>
-<dt>WebRTC</dt><dd>{"Kikapcsolva, csak Toron át mehetne" if TOR else "Helyi cím rejtve, a hívás működik"}</dd>
+<dt>WebRTC</dt><dd>{"Kikapcsolva, csak Toron át mehetne" if TOR else "Helyi cím csak engedély után látszik"}</dd>
 <dt>Lemez</dt><dd>Nincs előzmény, nincs gyorsítótár</dd>
 </dl></div>
 </div>
@@ -1479,29 +1580,36 @@ kbd{{font-family:'JetBrains Mono',monospace;font-size:11px;border:1px solid rgba
         if self.tor and self.tor.folyamat:
             self.tor.folyamat.terminate()
 
-    def closeEvent(self, e):
-        self.leallit()
-        for lap in self.lapok:
-            lap.page().deleteLater()
-        super().closeEvent(e)
-
 
 def main():
-    if not TOR and not RENDSZER_DNS:
-        m = QWebEngineGlobalSettings.DnsMode()
-        m.secureMode = QWebEngineGlobalSettings.SecureDnsMode.SecureOnly
-        m.serverTemplates = [DOH]
-        QWebEngineGlobalSettings.setDnsMode(m)
-    app = QApplication([sys.argv[0], "--webEngineArgs"] + chromium_flagek())
-    app.setApplicationName("Shade")
-    app.setDesktopFileName("shade")
-    app.setWindowIcon(QIcon(str(MAPPA / "shade.svg")))
-    app.setStyle("Fusion")
-    app.setPalette(paletta())
-    app.setStyleSheet(STILUS)
-    ablak = Ablak()
-    ablak.show()
-    sys.exit(app.exec())
+    if not TILTOTT_F.exists():
+        TILTOTT_F.write_text("\n".join(sorted(szuro.ALAP_TILTOTT)) + "\n")
+    ENGEDETT_F.write_text("")
+    ctx = WebKit.WebContext.get_default()
+    mappa = kiterjesztes()
+    if mappa:
+        ctx.set_web_process_extensions_directory(str(mappa))
+        ctx.set_web_process_extensions_initialization_user_data(GLib.Variant("(ss)", (str(TILTOTT_F), str(ENGEDETT_F))))
+    ctx.add_path_to_sandbox(str(CACHE), True)
+    ctx.set_preferred_languages(["hu-HU", "hu", "en"])
+    ctx.set_spell_checking_enabled(False)
+    ctx.set_cache_model(WebKit.CacheModel.WEB_BROWSER)
+    GLib.set_prgname("shade")
+    GLib.set_application_name("Shade")
+    app = Gtk.Application(flags=Gio.ApplicationFlags.NON_UNIQUE)
+
+    def indul(app):
+        css = Gtk.CssProvider()
+        css.load_from_string(stilus())
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        Gtk.Settings.get_default().set_property("gtk-interface-color-scheme", Gtk.InterfaceColorScheme.DARK)
+        Gtk.Window.set_default_icon_name("shade")
+        app.ablak = Ablak(app)
+        app.ablak.present()
+
+    app.connect("activate", indul)
+    app.connect("shutdown", lambda a: getattr(a, "ablak", None) and a.ablak.leallit())
+    sys.exit(app.run([sys.argv[0]]))
 
 
 if __name__ == "__main__":
